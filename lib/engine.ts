@@ -142,7 +142,8 @@ How to play it:
 - Don't invent big facts that the profile doesn't support. Small everyday details are fine.
 - Ask questions too, but don't interview them.
 - Never say you are an AI, a clone, or a stand-in.
-- Lines that start with [Director] describe what is happening. React to them in character.`;
+- Lines that start with [Director] describe what is happening. React to them in character.
+- Write ONLY ${self.name}'s next message, as plain text. Never write lines for ${other}, the director, or anyone else, and never describe actions in brackets or asterisks.`;
 }
 
 /** The transcript from one clone's point of view: its own lines are the assistant's. */
@@ -239,21 +240,36 @@ async function cloneTurn(events: DateEvent[], a: Person, b: Person, speaker: "a"
     }),
   );
   if (res.finishReason === "content-filter") throw new EngineError(`${self.name}'s clone declined to answer.`);
-  // Smaller models sometimes add a "Name:" label or wrap the line in quotes; strip both.
-  const text = res.text
-    .trim()
-    .replace(new RegExp(`^\\**${self.name}\\**:\\s*`, "i"), "")
-    .replace(/^"(.*)"$/s, "$1")
-    .trim();
+  const text = cleanCloneLine(res.text, self.name, other.name);
   if (!text) throw new EngineError(`${self.name}'s clone said nothing.`);
   return { speaker, text, scene };
+}
+
+/**
+ * Smaller models sometimes go beyond their own line: they add a "Name:" label, stage
+ * directions like "[glances away]" or "*laughs*", wrap the line in quotes, or carry on and
+ * write the director's or other people's lines. Keep only this clone's own words.
+ */
+export function cleanCloneLine(raw: string, self: string, other: string): string {
+  let t = raw.trim();
+  // Drop a leading "Name:" label for this clone, and a leading director line if it echoed one.
+  t = t.replace(new RegExp(`^\\s*\\*{0,2}${self}\\*{0,2}:\\s*`, "i"), "");
+  t = t.replace(/^\s*\[director\][^\n]*\n*/i, "");
+  // Stop where it starts writing someone else: a later line that is a director line or a
+  // "Name:" label (the other person, or anyone it invented).
+  const stop = t.search(new RegExp(`\\n\\s*(\\[director\\]|\\*{0,2}(${other}|[A-Za-z]+)\\*{0,2}:\\s)`, "i"));
+  if (stop > 0) t = t.slice(0, stop);
+  t = t.replace(/\[[^\]]{0,200}\]/g, "").replace(/(^|\s)\*[^*\n]{1,120}\*(?=\s|$)/g, "$1");
+  t = t.replace(/^"([\s\S]*)"$/, "$1");
+  return t.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 const DIRECTOR_INSTRUCTIONS = `You direct scene 2 of a first date between two people's stand-ins. Scene 1 was small talk. Your job is to add friction: write a concrete situation that makes them each take a position on the most important real difference between them.
 
 Rules:
 - Read both private profiles and pick the difference most likely to matter in a relationship (a dealbreaker, money, plans, values, how they handle conflict). If they truly align on everything, pick the subtlest difference.
-- Write the situation as something that happens to both of them, set in Chicago or at UChicago, ending in a decision or question they each have to answer.
+- Write the situation in 1-2 sentences, as something that happens to both of them, set in Chicago or at UChicago, ending with ONE short neutral question to both, such as "What do you each do?".
+- Only describe what happens. Never script their answers, say how either might feel or react, or offer options like "do you end the date?".
 - NEVER mention or hint at a detail from either private profile. The situation must be neutral: it should not reveal what either person said in their interview.
 - Do not take sides.`;
 
@@ -274,7 +290,7 @@ Rules:
 - Base everything on the transcript. Quote or point to real moments as evidence.
 - Be honest about clashes. If one of them pushed back or a dealbreaker came up, name it plainly. Do not soften a real conflict into "different perspectives".
 - Never give a score, a percentage, or a prediction about chemistry or attraction. Stand-ins can't predict that.
-- Conversation starters must be specific to what came up, not generic ("what's your favourite food?").
+- Conversation starters must be specific to what came up, not generic ("what's your favourite food?" or "what are your hobbies?"). At least one must help them talk about their biggest clash openly and kindly.
 - Write in plain words, addressed to both of them by name.`;
 
 export async function judge(events: DateEvent[], aName: string, bName: string): Promise<Report> {
