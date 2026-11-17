@@ -60,3 +60,11 @@ test("cleanCloneLine keeps only the clone's own words (cases seen in evals)", as
   // A colon inside an ordinary first line is fine.
   assert.equal(cleanCloneLine("honestly: i think the reg wins", "Maya", "Sam"), "honestly: i think the reg wins");
 });
+
+test("cleanCloneLine survives names with regex characters (security review M1)", async () => {
+  const { cleanCloneLine } = await import("./engine.ts");
+  assert.equal(cleanCloneLine("C++: hi there", "C++", "Jo)"), "hi there");
+  const t = Date.now();
+  cleanCloneLine("A".repeat(40) + "!", "(a*)*b", "x");
+  assert.ok(Date.now() - t < 100, "no catastrophic backtracking");
+});

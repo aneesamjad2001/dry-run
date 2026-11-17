@@ -6,7 +6,7 @@ import { getProfile, type ProfileRow } from "./data";
 // Who is looking at this page or calling this API, and are they allowed in?
 // Dry Run v1 is for UChicago students: the primary email must be on the allowed domain.
 
-const DOMAIN = (process.env.ALLOWED_EMAIL_DOMAIN ?? "uchicago.edu").toLowerCase();
+const DOMAIN = (process.env.ALLOWED_EMAIL_DOMAIN || "uchicago.edu").toLowerCase();
 
 export type Viewer = { userId: string; allowed: boolean; profile: ProfileRow | null };
 

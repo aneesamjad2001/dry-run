@@ -115,7 +115,7 @@ export default async function Landing() {
             {[
               "Clones only ever talk to each other. They never message a real person.",
               "Nothing happens until both of you say yes to the dry run.",
-              "Your answers stay private. Your match sees the date, never your profile.",
+              "Your answers stay private. Your match sees the conversation, never your profile, and your clone only shares what you'd bring up on a date.",
               "Your contact info is shared only if you both want to meet.",
               "Delete your clone any time.",
             ].map((r) => (

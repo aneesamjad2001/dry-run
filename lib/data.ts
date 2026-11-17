@@ -49,7 +49,8 @@ export class UserError extends Error {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DAILY_DATE_LIMIT = 8; // dry runs a person can start per 24h; keeps model spend bounded
+const DAILY_DATE_LIMIT = 8; // dry runs a person can start per day; keeps model spend bounded
+export const DAILY_BUILD_LIMIT = 6; // clone (re)builds per day
 
 function check<T>(res: { data: T; error: { message: string } | null }): T {
   if (res.error) throw new Error(res.error.message);
@@ -75,7 +76,8 @@ export async function deleteProfile(userId: string): Promise<void> {
 export type PublicPerson = { id: string; name: string; year: string; bio: string; isDemo: boolean };
 
 function publicPerson(p: Pick<ProfileRow, "user_id" | "name" | "year" | "bio" | "is_demo">): PublicPerson {
-  return { id: p.user_id, name: p.name, year: p.year, bio: p.bio, isDemo: p.is_demo };
+  // Only demo ids go to the browser (needed to start a demo date); real users' ids stay server-side.
+  return { id: p.is_demo ? p.user_id : "", name: p.name, year: p.year, bio: p.bio, isDemo: p.is_demo };
 }
 
 export async function listDemoPeople(): Promise<PublicPerson[]> {
@@ -86,12 +88,15 @@ export async function listDemoPeople(): Promise<PublicPerson[]> {
 // ---------------------------------------------------------------------------
 // Starting dry runs
 
-async function checkDailyLimit(userId: string) {
-  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
-  const { count, error } = await db().from("dates").select("id", { count: "exact", head: true }).eq("user_a", userId).gte("created_at", since);
+/** Takes one unit of today's quota atomically (see the quotas migration). */
+export async function takeQuota(userId: string, kind: "builds" | "dates", max: number, message: string) {
+  const { data, error } = await db().rpc("take_quota", { p_user: userId, p_kind: kind, p_max: max });
   if (error) throw new Error(error.message);
-  if ((count ?? 0) >= DAILY_DATE_LIMIT) throw new UserError("You've started a lot of dry runs today. Try again tomorrow.", 429);
+  if (data !== true) throw new UserError(message, 429);
 }
+
+const checkDailyLimit = (userId: string) =>
+  takeQuota(userId, "dates", DAILY_DATE_LIMIT, "You've started a lot of dry runs today. Try again tomorrow.");
 
 export async function startDemoDate(me: ProfileRow, demoId: string): Promise<string> {
   const demo = await getProfile(demoId);
@@ -163,7 +168,7 @@ export type DateView = {
   events: ViewEvent[];
   report: Report | null;
   myMeet: boolean | null;
-  theirMeet: boolean | null; // only revealed once I've answered
+  theirMeet: boolean | null; // only revealed once I've said yes
   contact: string | null; // only when both said yes
 };
 
@@ -206,7 +211,8 @@ async function toView(d: DateRow, userId: string): Promise<DateView> {
     events: d.events.map((e) => ({ who: e.speaker === "director" ? "director" : e.speaker === side ? "me" : "them", text: e.text, scene: e.scene })),
     report: d.status === "done" ? d.report : null,
     myMeet,
-    theirMeet: myMeet === null ? null : theirMeetRaw,
+    // Only someone who said yes learns the other answer; a "no" learns nothing.
+    theirMeet: myMeet === true ? theirMeetRaw : null,
     contact: myMeet === true && theirMeetRaw === true && theirs && !theirs.is_demo ? theirs.contact : null,
   };
 }
@@ -264,8 +270,29 @@ export async function stepDate(id: string, userId: string): Promise<DateView> {
   const A: Person = { name: a.name, profile: a.clone };
   const B: Person = { name: b.name, profile: b.clone };
 
-  const result = await runStep(d.step, d.events, A, B);
-  const patch: Partial<DateRow> & { director_target?: string } = { step: d.step + 1 };
+  // Claim this step BEFORE the model call, so parallel requests (two tabs, or someone
+  // spamming the endpoint) make one model call. A claim older than 90s is stale.
+  const stale = new Date(Date.now() - 90_000).toISOString();
+  const claimed = check(
+    await db()
+      .from("dates")
+      .update({ step_claimed_at: new Date().toISOString() })
+      .eq("id", d.id)
+      .eq("step", d.step)
+      .or(`step_claimed_at.is.null,step_claimed_at.lt."${stale}"`)
+      .select("id"),
+  ) as { id: string }[];
+  if (!claimed.length) return toView(d, userId); // someone else is running it; the client asks again
+
+  let result;
+  try {
+    result = await runStep(d.step, d.events, A, B);
+  } catch (err) {
+    // Release the claim so a retry can run straight away.
+    await db().from("dates").update({ step_claimed_at: null }).eq("id", d.id).eq("step", d.step);
+    throw err;
+  }
+  const patch: Partial<DateRow> & { director_target?: string; step_claimed_at: null } = { step: d.step + 1, step_claimed_at: null };
   if (result.event) patch.events = [...d.events, result.event];
   if (result.directorTarget) patch.director_target = result.directorTarget;
   if (result.report) {
@@ -285,6 +312,8 @@ export async function answerMeet(id: string, userId: string, yes: boolean): Prom
   if (!d || !side) throw new UserError("Dry run not found.", 404);
   if (d.status !== "done") throw new UserError("Wait for the report first.");
   const col = side === "a" ? "a_meet" : "b_meet";
-  const rows = check(await db().from("dates").update({ [col]: yes }).eq("id", d.id).select("*")) as DateRow[];
+  // Write-once: an answer can't be flipped to probe the other person's answer.
+  const rows = check(await db().from("dates").update({ [col]: yes }).eq("id", d.id).is(col, null).select("*")) as DateRow[];
+  if (!rows.length) throw new UserError("You've already answered.", 409);
   return toView(rows[0], userId);
 }
