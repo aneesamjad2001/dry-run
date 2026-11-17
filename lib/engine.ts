@@ -17,9 +17,24 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 
 // Model choices from the proposal: Haiku for the many short clone turns, Sonnet for
-// the two calls that need judgment (director and judge).
-export const CLONE_MODEL = "claude-haiku-5-5";
-export const SMART_MODEL = "claude-sonnet-5-5";
+// the calls that need judgment (building the clone, director, judge).
+//
+// Two ways to reach Claude, picked by which key is set:
+// - ANTHROPIC_API_KEY: the Anthropic API directly (paid, with a workspace spend limit).
+// - AI_GATEWAY_API_KEY: Vercel AI Gateway, which has a monthly free credit. Same SDK,
+//   different base URL and model ids.
+const viaGateway = () => !process.env.ANTHROPIC_API_KEY && !!process.env.AI_GATEWAY_API_KEY;
+
+export const CLONE_MODEL = viaGateway() ? "anthropic/claude-haiku-5.5" : "claude-haiku-5-5";
+export const SMART_MODEL = viaGateway() ? "anthropic/claude-sonnet-5.5" : "claude-sonnet-5-5";
+
+export function makeClient(opts: { timeout?: number; maxRetries?: number } = {}): Anthropic {
+  return viaGateway() ? new Anthropic({ ...opts, apiKey: process.env.AI_GATEWAY_API_KEY, baseURL: "https://ai-gateway.vercel.sh" }) : new Anthropic(opts);
+}
+
+// Server-side refusal fallbacks are an Anthropic API beta; only send them there.
+const fallback = () =>
+  viaGateway() ? {} : { betas: ["server-side-fallback-2026-07-01"] as Anthropic.Beta.AnthropicBeta[], fallbacks: "default" as const };
 
 export const CloneProfileSchema = z.object({
   summary: z.string().describe("Two or three sentences: who this person is, in plain words."),
@@ -193,8 +208,7 @@ async function director(client: Anthropic, events: DateEvent[], a: Person, b: Pe
     model: SMART_MODEL,
     max_tokens: 4000,
     output_config: { effort: "medium", format: betaZodOutputFormat(DirectorSchema) },
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
+    ...fallback(),
     system: `You direct scene 2 of a first date between two people's stand-ins. Scene 1 was small talk. Your job is to add friction: write a concrete situation that makes them each take a position on the most important real difference between them.
 
 Rules:
@@ -221,8 +235,7 @@ export async function judge(client: Anthropic, events: DateEvent[], aName: strin
     model: SMART_MODEL,
     max_tokens: 6000,
     output_config: { effort: "medium", format: betaZodOutputFormat(ReportSchema) },
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
+    ...fallback(),
     system: `You write the report after a first date between two people's stand-ins. Both real people will read it, then decide whether to meet. It must give them a reason to meet, not a verdict.
 
 Rules:
@@ -260,8 +273,7 @@ export async function buildProfile(client: Anthropic, name: string, answers: { q
     model: SMART_MODEL,
     max_tokens: 6000,
     output_config: { effort: "medium", format: betaZodOutputFormat(CloneProfileSchema) },
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
+    ...fallback(),
     system: `You turn a UChicago student's interview answers into a private profile for their stand-in on a first date. The stand-in must hold this person's real positions, so be specific and faithful:
 - Use their own words and examples where you can.
 - Dealbreakers and firm opinions matter most: keep them concrete ("won't date a smoker"), not generic ("values honesty").

@@ -7,14 +7,13 @@
 //
 // Each pair costs about 2 cents. Transcripts and reports go to scripts/out/.
 
-import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { actionAt, openingEvent, runStep, CLONE_MODEL, type DateEvent, type Report } from "../lib/engine.ts";
+import { actionAt, makeClient, openingEvent, runStep, CLONE_MODEL, type DateEvent, type Report } from "../lib/engine.ts";
 import { PAIRS, type Pair } from "./pairs.ts";
 
-const client = new Anthropic();
+const client = makeClient();
 
 const GradeSchema = z.object({ named: z.boolean(), why: z.string() });
 

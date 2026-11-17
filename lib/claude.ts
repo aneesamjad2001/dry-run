@@ -1,10 +1,11 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { makeClient } from "./engine";
 
 let client: Anthropic | undefined;
 
-/** Reads ANTHROPIC_API_KEY from the environment. Never sent to the browser. */
+/** Claude via ANTHROPIC_API_KEY or AI_GATEWAY_API_KEY (see lib/engine.ts). Never sent to the browser. */
 export function claude(): Anthropic {
-  client ??= new Anthropic({ timeout: 90_000, maxRetries: 2 });
+  client ??= makeClient({ timeout: 90_000, maxRetries: 2 });
   return client;
 }
