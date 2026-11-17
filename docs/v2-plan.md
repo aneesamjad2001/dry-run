@@ -81,3 +81,22 @@ fixes, 21 of 25 dates named the planted clash.
 
 Friend nominations, other schools, messaging inside the app, voice, and monetisation.
 All are real ideas, but none would make the fair demo better.
+
+## Beyond the class: what would have to be true for a company
+
+- **Clones must feel like you.** If people don't recognise themselves in their clone, the
+  rest fails. We measure this with the "does this sound like you?" score and the
+  friends-guess test (v2 add #1).
+- **Invites must spread.** Every dry run starts with one person inviting another, so
+  growth is built into the core task rather than needing a pool of strangers. The numbers
+  to watch are invites sent per clone and the share of invites accepted. If each new
+  person brings in at least one more, a campus fills itself.
+- **The report must change what people do.** The proposal targets 30% of matched pairs
+  actually meeting. The "Did you meet?" follow-up (v2 add #2) is the first real
+  measurement.
+- **Each dry run must be cheap.** A run is 14 small model calls. We'll measure the real
+  cost per run from AI Gateway logs before the fair, because that number decides the
+  pricing.
+- **Trust is the product.** Private answers never reach the other person, and only the
+  report is shared. A leak would end the company, which is why the prompt-injection
+  check is in "fix first".
