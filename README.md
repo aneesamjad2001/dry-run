@@ -7,6 +7,8 @@ each other. If you both say yes, you swap contacts.
 
 Design, Build, Ship (MPCS 51238), Autumn 2026 · Anees Amjad · Focus: **AI**
 
+**Live:** https://dry-run-eta.vercel.app (sign in with a @uchicago.edu email)
+
 ## The core task (v1)
 
 1. Sign in with a UChicago email.
