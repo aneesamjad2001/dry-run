@@ -1,7 +1,6 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { db } from "./db";
-import { claude } from "./claude";
 import {
   actionAt,
   openingEvent,
@@ -265,7 +264,7 @@ export async function stepDate(id: string, userId: string): Promise<DateView> {
   const A: Person = { name: a.name, profile: a.clone };
   const B: Person = { name: b.name, profile: b.clone };
 
-  const result = await runStep(claude(), d.step, d.events, A, B);
+  const result = await runStep(d.step, d.events, A, B);
   const patch: Partial<DateRow> & { director_target?: string } = { step: d.step + 1 };
   if (result.event) patch.events = [...d.events, result.event];
   if (result.directorTarget) patch.director_target = result.directorTarget;

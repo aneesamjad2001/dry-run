@@ -12,29 +12,18 @@
 // - The judge sees only the transcript (what both people can watch anyway), so the
 //   report cannot leak anyone's private profile.
 
-import Anthropic from "@anthropic-ai/sdk";
-import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
+import { generateText, NoObjectGeneratedError, Output, type ModelMessage } from "ai";
 import { z } from "zod";
 
-// Model choices from the proposal: Haiku for the many short clone turns, Sonnet for
-// the calls that need judgment (building the clone, director, judge).
-//
-// Two ways to reach Claude, picked by which key is set:
-// - ANTHROPIC_API_KEY: the Anthropic API directly (paid, with a workspace spend limit).
-// - AI_GATEWAY_API_KEY: Vercel AI Gateway, which has a monthly free credit. Same SDK,
-//   different base URL and model ids.
-const viaGateway = () => !process.env.ANTHROPIC_API_KEY && !!process.env.AI_GATEWAY_API_KEY;
+// All model calls go through Vercel AI Gateway with the AI SDK, so any model in the
+// Gateway catalog works. Auth: AI_GATEWAY_API_KEY locally; on Vercel, the deployment's
+// OIDC token. Pick models in .env.local without touching code:
+//   DRYRUN_CLONE_MODEL  many short in-character turns: fast and cheap
+//   DRYRUN_SMART_MODEL  building the clone, the director and the judge: needs judgment
+export const CLONE_MODEL = process.env.DRYRUN_CLONE_MODEL || "anthropic/claude-haiku-5.5";
+export const SMART_MODEL = process.env.DRYRUN_SMART_MODEL || "anthropic/claude-sonnet-5.5";
 
-export const CLONE_MODEL = viaGateway() ? "anthropic/claude-haiku-5.5" : "claude-haiku-5-5";
-export const SMART_MODEL = viaGateway() ? "anthropic/claude-sonnet-5.5" : "claude-sonnet-5-5";
-
-export function makeClient(opts: { timeout?: number; maxRetries?: number } = {}): Anthropic {
-  return viaGateway() ? new Anthropic({ ...opts, apiKey: process.env.AI_GATEWAY_API_KEY, baseURL: "https://ai-gateway.vercel.sh" }) : new Anthropic(opts);
-}
-
-// Server-side refusal fallbacks are an Anthropic API beta; only send them there.
-const fallback = () =>
-  viaGateway() ? {} : { betas: ["server-side-fallback-2026-07-01"] as Anthropic.Beta.AnthropicBeta[], fallbacks: "default" as const };
+const REQUEST = { maxRetries: 2, timeout: 90_000 } as const;
 
 export const CloneProfileSchema = z.object({
   summary: z.string().describe("Two or three sentences: who this person is, in plain words."),
@@ -144,13 +133,13 @@ How to play it:
 }
 
 /** The transcript from one clone's point of view: its own lines are the assistant's. */
-export function cloneMessages(events: DateEvent[], self: "a" | "b"): Anthropic.MessageParam[] {
-  const out: Anthropic.MessageParam[] = [];
+export function cloneMessages(events: DateEvent[], self: "a" | "b"): ModelMessage[] {
+  const out: { role: "user" | "assistant"; content: string }[] = [];
   for (const e of events) {
     const role = e.speaker === self ? "assistant" : "user";
     const text = e.speaker === "director" ? `[Director] ${e.text}` : e.text;
     const last = out[out.length - 1];
-    if (last && last.role === role && typeof last.content === "string") {
+    if (last && last.role === role) {
       last.content += `\n\n${text}`;
     } else {
       out.push({ role, content: text });
@@ -178,88 +167,88 @@ export type StepResult = { event?: DateEvent; report?: Report; directorTarget?: 
 
 export class EngineError extends Error {}
 
-function textOf(content: Anthropic.ContentBlock[] | Anthropic.Beta.BetaContentBlock[]): string {
-  return content
-    .map((b) => (b.type === "text" ? b.text : ""))
-    .join("")
-    .trim();
+/** One structured call: the model must return JSON matching the schema. */
+async function structured<T>(schema: z.ZodType<T>, model: string, instructions: string, prompt: string, failure: string): Promise<T> {
+  try {
+    const res = await generateText({ ...REQUEST, model, instructions, prompt, reasoning: "medium", output: Output.object({ schema }) });
+    return res.output;
+  } catch (err) {
+    if (NoObjectGeneratedError.isInstance(err)) throw new EngineError(failure);
+    throw err;
+  }
 }
 
-async function cloneTurn(client: Anthropic, events: DateEvent[], a: Person, b: Person, speaker: "a" | "b", scene: 1 | 2): Promise<DateEvent> {
+async function cloneTurn(events: DateEvent[], a: Person, b: Person, speaker: "a" | "b", scene: 1 | 2): Promise<DateEvent> {
   const self = speaker === "a" ? a : b;
   const other = speaker === "a" ? b : a;
-  const res = await client.messages.create({
+  const res = await generateText({
+    ...REQUEST,
     model: CLONE_MODEL,
-    max_tokens: 2000,
-    // Short in-character replies don't need deep thinking; low effort keeps turns fast.
-    output_config: { effort: "low" },
-    system: cloneSystem(self, other.name),
+    // Short in-character replies don't need deep thinking; low keeps turns fast.
+    reasoning: "low",
+    maxOutputTokens: 2000,
+    instructions: cloneSystem(self, other.name),
     messages: cloneMessages(events, speaker),
   });
-  if (res.stop_reason === "refusal") throw new EngineError(`${self.name}'s clone declined to answer.`);
-  // Strip a "Name:" label if the model adds one anyway.
-  const text = textOf(res.content).replace(new RegExp(`^${self.name}:\\s*`, "i"), "");
+  if (res.finishReason === "content-filter") throw new EngineError(`${self.name}'s clone declined to answer.`);
+  // Smaller models sometimes add a "Name:" label or wrap the line in quotes; strip both.
+  const text = res.text
+    .trim()
+    .replace(new RegExp(`^\\**${self.name}\\**:\\s*`, "i"), "")
+    .replace(/^"(.*)"$/s, "$1")
+    .trim();
   if (!text) throw new EngineError(`${self.name}'s clone said nothing.`);
   return { speaker, text, scene };
 }
 
-async function director(client: Anthropic, events: DateEvent[], a: Person, b: Person): Promise<StepResult> {
-  const res = await client.beta.messages.parse({
-    model: SMART_MODEL,
-    max_tokens: 4000,
-    output_config: { effort: "medium", format: betaZodOutputFormat(DirectorSchema) },
-    ...fallback(),
-    system: `You direct scene 2 of a first date between two people's stand-ins. Scene 1 was small talk. Your job is to add friction: write a concrete situation that makes them each take a position on the most important real difference between them.
+const DIRECTOR_INSTRUCTIONS = `You direct scene 2 of a first date between two people's stand-ins. Scene 1 was small talk. Your job is to add friction: write a concrete situation that makes them each take a position on the most important real difference between them.
 
 Rules:
 - Read both private profiles and pick the difference most likely to matter in a relationship (a dealbreaker, money, plans, values, how they handle conflict). If they truly align on everything, pick the subtlest difference.
 - Write the situation as something that happens to both of them, set in Chicago or at UChicago, ending in a decision or question they each have to answer.
 - NEVER mention or hint at a detail from either private profile. The situation must be neutral: it should not reveal what either person said in their interview.
-- Do not take sides.`,
-    messages: [
-      {
-        role: "user",
-        content: `<person_a name="${a.name}">\n${profileBlock(a.profile)}\n</person_a>\n\n<person_b name="${b.name}">\n${profileBlock(b.profile)}\n</person_b>\n\n<scene_1>\n${transcriptText(events, a.name, b.name)}\n</scene_1>\n\nWrite scene 2. ${b.name} will respond first.`,
-      },
-    ],
-  });
-  if (res.stop_reason === "refusal" || !res.parsed_output) throw new EngineError("The director couldn't set up scene 2.");
-  return {
-    event: { speaker: "director", scene: 2, text: `Scene 2: ${res.parsed_output.event}` },
-    directorTarget: res.parsed_output.target,
-  };
+- Do not take sides.`;
+
+async function director(events: DateEvent[], a: Person, b: Person): Promise<StepResult> {
+  const out = await structured(
+    DirectorSchema,
+    SMART_MODEL,
+    DIRECTOR_INSTRUCTIONS,
+    `<person_a name="${a.name}">\n${profileBlock(a.profile)}\n</person_a>\n\n<person_b name="${b.name}">\n${profileBlock(b.profile)}\n</person_b>\n\n<scene_1>\n${transcriptText(events, a.name, b.name)}\n</scene_1>\n\nWrite scene 2. ${b.name} will respond first.`,
+    "The director couldn't set up scene 2.",
+  );
+  return { event: { speaker: "director", scene: 2, text: `Scene 2: ${out.event}` }, directorTarget: out.target };
 }
 
-export async function judge(client: Anthropic, events: DateEvent[], aName: string, bName: string): Promise<Report> {
-  const res = await client.beta.messages.parse({
-    model: SMART_MODEL,
-    max_tokens: 6000,
-    output_config: { effort: "medium", format: betaZodOutputFormat(ReportSchema) },
-    ...fallback(),
-    system: `You write the report after a first date between two people's stand-ins. Both real people will read it, then decide whether to meet. It must give them a reason to meet, not a verdict.
+const JUDGE_INSTRUCTIONS = `You write the report after a first date between two people's stand-ins. Both real people will read it, then decide whether to meet. It must give them a reason to meet, not a verdict.
 
 Rules:
 - Base everything on the transcript. Quote or point to real moments as evidence.
 - Be honest about clashes. If one of them pushed back or a dealbreaker came up, name it plainly. Do not soften a real conflict into "different perspectives".
 - Never give a score, a percentage, or a prediction about chemistry or attraction. Stand-ins can't predict that.
 - Conversation starters must be specific to what came up, not generic ("what's your favourite food?").
-- Write in plain words, addressed to both of them by name.`,
-    messages: [{ role: "user", content: `<transcript>\n${transcriptText(events, aName, bName)}\n</transcript>` }],
-  });
-  if (res.stop_reason === "refusal" || !res.parsed_output) throw new EngineError("The judge couldn't write the report.");
-  return res.parsed_output;
+- Write in plain words, addressed to both of them by name.`;
+
+export async function judge(events: DateEvent[], aName: string, bName: string): Promise<Report> {
+  return structured(
+    ReportSchema,
+    SMART_MODEL,
+    JUDGE_INSTRUCTIONS,
+    `<transcript>\n${transcriptText(events, aName, bName)}\n</transcript>`,
+    "The judge couldn't write the report.",
+  );
 }
 
 /** Runs the model call for one step. The caller saves the result and advances the step. */
-export async function runStep(client: Anthropic, step: number, events: DateEvent[], a: Person, b: Person): Promise<StepResult> {
+export async function runStep(step: number, events: DateEvent[], a: Person, b: Person): Promise<StepResult> {
   const action = actionAt(step);
   switch (action.kind) {
     case "turn":
-      return { event: await cloneTurn(client, events, a, b, action.speaker, action.scene) };
+      return { event: await cloneTurn(events, a, b, action.speaker, action.scene) };
     case "director":
-      return director(client, events, a, b);
+      return director(events, a, b);
     case "judge":
-      return { report: await judge(client, events, a.name, b.name) };
+      return { report: await judge(events, a.name, b.name) };
     case "done":
       throw new EngineError("This date is already over.");
   }
@@ -268,24 +257,18 @@ export async function runStep(client: Anthropic, step: number, events: DateEvent
 // ---------------------------------------------------------------------------
 // Building a clone from interview answers
 
-export async function buildProfile(client: Anthropic, name: string, answers: { question: string; answer: string }[]): Promise<CloneProfile> {
-  const res = await client.beta.messages.parse({
-    model: SMART_MODEL,
-    max_tokens: 6000,
-    output_config: { effort: "medium", format: betaZodOutputFormat(CloneProfileSchema) },
-    ...fallback(),
-    system: `You turn a UChicago student's interview answers into a private profile for their stand-in on a first date. The stand-in must hold this person's real positions, so be specific and faithful:
+const PROFILE_INSTRUCTIONS = `You turn a UChicago student's interview answers into a private profile for their stand-in on a first date. The stand-in must hold this person's real positions, so be specific and faithful:
 - Use their own words and examples where you can.
 - Dealbreakers and firm opinions matter most: keep them concrete ("won't date a smoker"), not generic ("values honesty").
 - If they didn't say something, don't invent it. Keep that field short or say "not stated".
-- The voice and sample lines should copy how they actually wrote their answers.`,
-    messages: [
-      {
-        role: "user",
-        content: `Name: ${name}\n\n${answers.map((qa) => `<qa>\nQ: ${qa.question}\nA: ${qa.answer}\n</qa>`).join("\n")}`,
-      },
-    ],
-  });
-  if (res.stop_reason === "refusal" || !res.parsed_output) throw new EngineError("Couldn't build your clone from those answers.");
-  return res.parsed_output;
+- The voice and sample lines should copy how they actually wrote their answers.`;
+
+export async function buildProfile(name: string, answers: { question: string; answer: string }[]): Promise<CloneProfile> {
+  return structured(
+    CloneProfileSchema,
+    SMART_MODEL,
+    PROFILE_INSTRUCTIONS,
+    `Name: ${name}\n\n${answers.map((qa) => `<qa>\nQ: ${qa.question}\nA: ${qa.answer}\n</qa>`).join("\n")}`,
+    "Couldn't build your clone from those answers. Try again.",
+  );
 }

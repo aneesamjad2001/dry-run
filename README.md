@@ -23,10 +23,14 @@ for the next step, shows it, and asks again. That gives a live view with no long
 
 | Step | Who | Model | Sees |
 |---|---|---|---|
-| 0–5 | Scene 1: small talk, clones alternate | Haiku 5.5 | **its own** private profile + the conversation |
-| 6 | Director writes a situation aimed at their biggest real difference | Sonnet 5.5 | both profiles, writes only a neutral situation |
-| 7–12 | Scene 2: the clones respond and hold their positions | Haiku 5.5 | its own profile + the conversation |
-| 13 | Judge writes the report: aligned, clashes, 3 starters, no score | Sonnet 5.5 | **only the transcript** |
+| 0–5 | Scene 1: small talk, clones alternate | clone model | **its own** private profile + the conversation |
+| 6 | Director writes a situation aimed at their biggest real difference | smart model | both profiles, writes only a neutral situation |
+| 7–12 | Scene 2: the clones respond and hold their positions | clone model | its own profile + the conversation |
+| 13 | Judge writes the report: aligned, clashes, 3 starters, no score | smart model | **only the transcript** |
+
+All calls go through Vercel AI Gateway with the AI SDK, so the models are settings, not
+code: `DRYRUN_CLONE_MODEL` (fast, many short turns) and `DRYRUN_SMART_MODEL` (building the
+clone, director, judge). `npm run check` tests a model pair in a few calls.
 
 Each clone is a separate call, so neither can read the other's profile. The judge only
 sees what both people can watch anyway, so the report can't leak a private profile.
@@ -46,7 +50,7 @@ faith, location, …). The eval scores the proposal's targets:
 
 ## Stack
 
-Next.js 16 on Vercel · Clerk (UChicago emails only) · Supabase Postgres · Claude API.
+Next.js 16 on Vercel · Clerk (UChicago emails only) · Supabase Postgres · AI SDK + Vercel AI Gateway (free monthly credit).
 
 **Data access:** the browser never talks to Supabase. Every read and write goes through
 server routes that check the Clerk session and use the secret key. Row-level security is
@@ -65,5 +69,5 @@ profiles and contact info never reach another person's browser.
 ## Safety and cost
 
 - Keys live in env vars only; `.env*` is git-ignored, and agents are denied reading it (`.claude/settings.json`).
-- Each person can start at most 8 dry runs per 24 hours. The Anthropic workspace has a monthly spend limit.
-- A dry run costs about 2 cents.
+- Each person can start at most 8 dry runs per 24 hours.
+- Models run on AI Gateway's free monthly credit (free-tier models only; buying credits would move the team to the paid tier).

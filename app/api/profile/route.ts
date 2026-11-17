@@ -1,5 +1,4 @@
 import { buildProfile } from "@/lib/engine";
-import { claude } from "@/lib/claude";
 import { deleteProfile, saveProfile } from "@/lib/data";
 import { apiViewer } from "@/lib/viewer";
 import { errorResponse, readJson, str } from "@/lib/api";
@@ -25,7 +24,7 @@ export async function POST(req: Request) {
   if (short >= 0) return Response.json({ error: `Question ${short + 1} needs an answer.` }, { status: 400 });
 
   try {
-    const clone = await buildProfile(claude(), name, answers);
+    const clone = await buildProfile(name, answers);
     await saveProfile(v.userId, { name, year, bio, contact, answers, clone });
     return Response.json({ clone });
   } catch (err) {

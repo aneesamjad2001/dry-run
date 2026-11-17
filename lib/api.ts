@@ -1,5 +1,5 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import { AISDKError, APICallError, RetryError } from "ai";
 import { EngineError } from "./engine";
 import { UserError } from "./data";
 
@@ -7,9 +7,12 @@ import { UserError } from "./data";
 export function errorResponse(err: unknown): Response {
   if (err instanceof UserError) return Response.json({ error: err.message }, { status: err.status });
   if (err instanceof EngineError) return Response.json({ error: err.message, retry: true }, { status: 502 });
-  if (err instanceof Anthropic.RateLimitError) return Response.json({ error: "The clones are busy. Try again in a minute.", retry: true }, { status: 429 });
-  if (err instanceof Anthropic.APIError) {
-    console.error("Claude API error", err.status, err.message);
+  const cause = RetryError.isInstance(err) ? err.lastError : err;
+  if (APICallError.isInstance(cause) && cause.statusCode === 429) {
+    return Response.json({ error: "The clones are busy. Try again in a minute.", retry: true }, { status: 429 });
+  }
+  if (AISDKError.isInstance(err)) {
+    console.error("Model call failed:", err.name, err.message);
     return Response.json({ error: "The clones lost their train of thought. Try again.", retry: true }, { status: 502 });
   }
   console.error(err);

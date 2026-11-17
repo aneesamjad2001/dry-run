@@ -5,31 +5,23 @@
 //   npm run eval                 all pairs
 //   npm run eval -- smoking kids only these pair ids
 //
-// Each pair costs about 2 cents. Transcripts and reports go to scripts/out/.
+// Each pair is about 15 model calls. Transcripts and reports go to scripts/out/.
 
+import { generateText, Output } from "ai";
 import { z } from "zod";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { actionAt, makeClient, openingEvent, runStep, CLONE_MODEL, type DateEvent, type Report } from "../lib/engine.ts";
+import { actionAt, openingEvent, runStep, CLONE_MODEL, SMART_MODEL, type DateEvent, type Report } from "../lib/engine.ts";
 import { PAIRS, type Pair } from "./pairs.ts";
-
-const client = makeClient();
 
 const GradeSchema = z.object({ named: z.boolean(), why: z.string() });
 
 async function grade(report: Report, clash: string): Promise<{ named: boolean; why: string }> {
-  const res = await client.messages.parse({
+  const res = await generateText({
     model: CLONE_MODEL,
-    max_tokens: 2000,
-    output_config: { effort: "low", format: zodOutputFormat(GradeSchema) },
-    messages: [
-      {
-        role: "user",
-        content: `A date report lists these clashes:\n${report.clashes.map((c) => `- ${c.point} (${c.evidence})`).join("\n")}\n\nThe planted clash was: ${clash}\n\nDoes the report clearly name the planted clash (same underlying issue, not just a vague nod)? Answer named=true or false.`,
-      },
-    ],
+    output: Output.object({ schema: GradeSchema }),
+    prompt: `A date report lists these clashes:\n${report.clashes.map((c) => `- ${c.point} (${c.evidence})`).join("\n")}\n\nThe planted clash was: ${clash}\n\nDoes the report clearly name the planted clash (same underlying issue, not just a vague nod)? Answer named=true or false.`,
   });
-  return res.parsed_output ?? { named: false, why: "grader failed" };
+  return res.output;
 }
 
 async function runPair(pair: Pair) {
@@ -38,7 +30,7 @@ async function runPair(pair: Pair) {
   let report: Report | undefined;
   let target: string | undefined;
   for (let step = 0; actionAt(step).kind !== "done"; step++) {
-    const r = await runStep(client, step, events, pair.a, pair.b);
+    const r = await runStep(step, events, pair.a, pair.b);
     if (r.event) events.push(r.event);
     if (r.report) report = r.report;
     if (r.directorTarget) target = r.directorTarget;
@@ -54,11 +46,12 @@ if (!pairs.length) {
   process.exit(1);
 }
 
-console.log(`Running ${pairs.length} clone date(s)...\n`);
+console.log(`Running ${pairs.length} clone date(s) with clones=${CLONE_MODEL}, director/judge=${SMART_MODEL}\n`);
 const results = [];
-// Three at a time keeps us well under rate limits.
-for (let i = 0; i < pairs.length; i += 3) {
-  const batch = await Promise.allSettled(pairs.slice(i, i + 3).map(runPair));
+// One pair at a time by default: free-tier rate limits are low. EVAL_CONCURRENCY=3 to go faster.
+const PARALLEL = Math.max(1, Number(process.env.EVAL_CONCURRENCY) || 1);
+for (let i = 0; i < pairs.length; i += PARALLEL) {
+  const batch = await Promise.allSettled(pairs.slice(i, i + PARALLEL).map(runPair));
   for (const [j, r] of batch.entries()) {
     const id = pairs[i + j].id;
     if (r.status === "rejected") {

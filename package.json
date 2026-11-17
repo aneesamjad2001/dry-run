@@ -8,12 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/*.test.ts",
-    "eval": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/eval.ts"
+    "eval": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/eval.ts",
+    "check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/check-models.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.10.0",
     "@clerk/nextjs": "7.9.21",
     "@supabase/supabase-js": "2.118.0",
+    "ai": "^7.0.175",
     "next": "^16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
