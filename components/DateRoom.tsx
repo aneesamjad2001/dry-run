@@ -26,7 +26,14 @@ export function DateRoom({ initial }: { initial: DateView }) {
     (async () => {
       while (!cancelled) {
         const started = Date.now();
-        const res = await fetch(`/api/dates/${view.id}/step`, { method: "POST" });
+        let res: Response;
+        try {
+          res = await fetch(`/api/dates/${view.id}/step`, { method: "POST" });
+        } catch {
+          // Network dropped. Show the error so the "Try again" button can restart the loop.
+          if (!cancelled) setError("Lost connection. Check your internet and try again.");
+          return;
+        }
         const data = await res.json().catch(() => ({ error: "Lost connection." }));
         if (cancelled) return;
         if (res.status === 429 && data.retryAfter) {
