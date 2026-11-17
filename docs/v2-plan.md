@@ -10,8 +10,21 @@ security review.
 
 ### Real users (Nov 17)
 <!-- Fill in from docs/user-testing.md: what each person DID and SAID, and where they got stuck. -->
-- Tester 1:
-- Tester 2:
+- **Me, as a new user (Nov 17, dry run with demo Nora).** The flow worked end to end, and
+  the clones held their own lives (my 6am runs vs her slow mornings and reading). Four
+  things went wrong:
+  1. **The biggest miss:** my clone said "i'm looking for friends", but Nora wants
+     "something serious and slow-burn". The report listed this as a *match* ("you both
+     appreciate taking things slowly"). Agreeing on pace hid a mismatch in what we each want.
+  2. **Thin evidence:** "you both like reading" was backed by Nora asking "do you like
+     reading much?". A question isn't evidence.
+  3. **My clone summary called me "he".** It guessed my pronouns from my name. Summaries now
+     speak to you directly ("You wake up at 6am…") and never guess pronouns.
+  4. **My clone repeated my interview answer word for word** ("friends to spend great time
+     together"). It reads like a form, not a person.
+  Fixes 1–3 shipped as prompt changes at 5:25 PM. They aren't in the eval yet, so
+  re-running the eval is the first v2 task.
+- Tester 2: (classmates, in class Nov 17)
 - Tester 3:
 
 ### The eval (10 planted-dealbreaker pairs, `npm run eval`)

@@ -39,7 +39,7 @@ export const SMART_MODEL = SMART_MODELS[0];
 const REQUEST = { maxRetries: 0, timeout: 60_000 } as const;
 
 export const CloneProfileSchema = z.object({
-  summary: z.string().describe("Two or three sentences: who this person is, in plain words."),
+  summary: z.string().describe("Two or three sentences: who this person is, in plain words. Write it to them in the second person (\"You wake up at 6am…\"). Never guess their gender or pronouns."),
   looking_for: z.string().describe("What they want right now: serious, casual, unsure, and any detail."),
   values: z.array(z.string()).describe("3-5 things they care about most."),
   dealbreakers: z.array(z.string()).describe("1-4 things they would not accept in a partner. Specific, not generic."),
@@ -301,7 +301,8 @@ async function director(events: DateEvent[], a: Person, b: Person): Promise<Step
 const JUDGE_INSTRUCTIONS = `You write the report after a first date between two people's stand-ins. Both real people will read it, then decide whether to meet. It must give them a reason to meet, not a verdict.
 
 Rules:
-- Base everything on the transcript. Quote or point to real moments as evidence.
+- Base everything on the transcript. Quote or point to real moments as evidence. Each quote must be something that person stated that supports the point; a question they asked is not evidence. Leave out any point without strong evidence: two solid points beat four thin ones.
+- Watch for different goals: if one wants friendship or something casual and the other wants something serious, that is a clash even if they agreed on pacing.
 - Be honest about clashes. If one of them pushed back or a dealbreaker came up, name it plainly. Do not soften a real conflict into "different perspectives".
 - Never give a score, a percentage, or a prediction about chemistry or attraction. Stand-ins can't predict that.
 - Conversation starters must be specific to what came up, not generic ("what's your favourite food?" or "what are your hobbies?"). At least one must help them talk about their biggest clash openly and kindly.
