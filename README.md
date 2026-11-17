@@ -48,6 +48,17 @@ faith, location, …). The eval scores the proposal's targets:
 - **Mismatch detection:** the report names the planted clash (target 80%)
 - **Honest disagreement:** both clones held their positions in scene 2 (target 70%)
 
+Latest full run (Nov 17, free-tier models): **10/10 and 10/10**. Politics is the flaky pair;
+see [docs/v2-plan.md](docs/v2-plan.md).
+
+`npm run e2e` runs the whole core task in a real browser as two new test students
+(Clerk test users, real model calls, ~3.5 minutes).
+
+## v1 → v2
+
+- [docs/v2-plan.md](docs/v2-plan.md): what we saw when v1 was used, and what v2 changes.
+- [docs/user-testing.md](docs/user-testing.md): the user-test script and notes.
+
 ## Stack
 
 Next.js 16 on Vercel · Clerk (UChicago emails only) · Supabase Postgres · AI SDK + Vercel AI Gateway (free monthly credit).
