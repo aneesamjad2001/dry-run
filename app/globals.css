@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+/* Dry Run: warm paper, a rose accent, a serif for the human moments.
+   It should feel like a note from a friend, not a dashboard. Same palette as the
+   proposal page, which reviewers liked. Dark mode follows the system. */
+:root {
+  --bg: #faf8f4;
+  --fg: #1c1a17;
+  --muted: #6d675e;
+  --line: #e7e2d9;
+  --card: #ffffff;
+  --soft: #f3efe8;
+  --accent: #c92a5f;
+  --accent-hover: #b0204f;
+  --accent-soft: #fce7ef;
+  --me: #3b5bdb;
+  --me-soft: #e7ecff;
+  --good: #2b8a3e;
+  --good-soft: #e6f4ea;
+  --warn: #a65500;
+  --warn-soft: #fff1e0;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.05);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141311;
+    --fg: #f2efe9;
+    --muted: #a39e95;
+    --line: #2c2925;
+    --card: #1d1b18;
+    --soft: #24221e;
+    --accent: #f06595;
+    --accent-hover: #f783ac;
+    --accent-soft: #3a1d29;
+    --me: #91a7ff;
+    --me-soft: #1f2640;
+    --good: #69db7c;
+    --good-soft: #17301d;
+    --warn: #ffa94d;
+    --warn-soft: #3a2711;
+    --shadow: none;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-card: var(--card);
+  --color-soft: var(--soft);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-me: var(--me);
+  --color-me-soft: var(--me-soft);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --font-serif: var(--font-instrument-serif), Georgia, serif;
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --shadow-card: var(--shadow);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 15px;
+  transition: background 0.15s, opacity 0.15s;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:not(:disabled):hover {
+  background: var(--accent-hover);
+}
+@media (prefers-color-scheme: dark) {
+  .btn-primary {
+    color: #1c1a17;
+  }
+}
+.btn-ghost {
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--fg);
+}
+.btn-ghost:not(:disabled):hover {
+  background: var(--soft);
+}
+
+.field {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 16px;
+  color: var(--fg);
+}
+.field:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  border-color: transparent;
+}
+
+.typing span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 1.5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: typing 1.2s infinite;
+}
+.typing span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes typing {
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+.pop {
+  animation: pop 0.25s ease-out;
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing span,
+  .pop {
+    animation: none;
+  }
+}
