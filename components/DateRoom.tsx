@@ -14,6 +14,7 @@ const MIN_GAP_MS = 1100; // so lines arrive at a readable, texting-like pace
 export function DateRoom({ initial }: { initial: DateView }) {
   const [view, setView] = useState(initial);
   const [error, setError] = useState<string | null>(null);
+  const [pause, setPause] = useState<string | null>(null); // busy models: waiting, will carry on
   const [runId, setRunId] = useState(0); // bump to retry after an error
   const bottom = useRef<HTMLDivElement>(null);
   const them = view.them?.name ?? view.inviteeLabel ?? "your match";
@@ -28,6 +29,13 @@ export function DateRoom({ initial }: { initial: DateView }) {
         const res = await fetch(`/api/dates/${view.id}/step`, { method: "POST" });
         const data = await res.json().catch(() => ({ error: "Lost connection." }));
         if (cancelled) return;
+        if (res.status === 429 && data.retryAfter) {
+          // Free-tier models are busy. Wait and carry on by ourselves; this isn't an error.
+          setPause(data.error);
+          await new Promise((r) => setTimeout(r, data.retryAfter * 1000));
+          setPause(null);
+          continue;
+        }
         if (!res.ok) {
           setError(data.error ?? "Something went wrong.");
           return;
@@ -103,6 +111,11 @@ export function DateRoom({ initial }: { initial: DateView }) {
             ),
           )}
           {view.status === "running" && !error && <Typing view={view} them={them} />}
+          {pause && (
+            <p className="text-center text-sm text-muted" role="status">
+              {pause}
+            </p>
+          )}
         </div>
       )}
 

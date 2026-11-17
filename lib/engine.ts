@@ -17,13 +17,26 @@ import { z } from "zod";
 
 // All model calls go through Vercel AI Gateway with the AI SDK, so any model in the
 // Gateway catalog works. Auth: AI_GATEWAY_API_KEY locally; on Vercel, the deployment's
-// OIDC token. Pick models in .env.local without touching code:
+// OIDC token. Pick models in .env.local without touching code (comma-separated lists):
 //   DRYRUN_CLONE_MODEL  many short in-character turns: fast and cheap
 //   DRYRUN_SMART_MODEL  building the clone, the director and the judge: needs judgment
-export const CLONE_MODEL = process.env.DRYRUN_CLONE_MODEL || "anthropic/claude-haiku-5.5";
-export const SMART_MODEL = process.env.DRYRUN_SMART_MODEL || "anthropic/claude-sonnet-5.5";
+//
+// Why lists: on the Gateway's free tier each model allows only 5 requests a minute, and a
+// dry run is 12 clone turns. Each model has its own limit, so the calls rotate through
+// the list, and a rate-limited model hands the turn to the next one. Defaults are
+// free-tier models whose providers don't train on prompts.
+function modelList(v: string | undefined, fallback: string[]): string[] {
+  const list = (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return list.length ? list : fallback;
+}
+export const CLONE_MODELS = modelList(process.env.DRYRUN_CLONE_MODEL, ["openai/gpt-4.1-mini", "openai/gpt-4o-mini", "google/gemini-2.5-flash-lite"]);
+export const SMART_MODELS = modelList(process.env.DRYRUN_SMART_MODEL, ["openai/gpt-5-mini", "google/gemini-2.5-flash"]);
+export const CLONE_MODEL = CLONE_MODELS[0];
+export const SMART_MODEL = SMART_MODELS[0];
 
-const REQUEST = { maxRetries: 2, timeout: 90_000 } as const;
+// No SDK-level retries: on a rate limit the SDK would wait out a 60s retry-after.
+// Moving to the next model is faster; see withModels().
+const REQUEST = { maxRetries: 0, timeout: 60_000 } as const;
 
 export const CloneProfileSchema = z.object({
   summary: z.string().describe("Two or three sentences: who this person is, in plain words."),
@@ -167,11 +180,44 @@ export type StepResult = { event?: DateEvent; report?: Report; directorTarget?: 
 
 export class EngineError extends Error {}
 
+/** Every model in the list is rate-limited right now. The caller should wait and retry. */
+export class RateLimitedError extends EngineError {
+  constructor() {
+    super("Lots of people are on dry runs right now. Picking up again in a few seconds…");
+  }
+}
+
+/** True for a 429 / rate-limit error, including when the SDK wraps it. */
+export function isRateLimited(err: unknown): boolean {
+  for (let e = err as { name?: string; statusCode?: number; lastError?: unknown; cause?: unknown } | undefined, i = 0; e && i < 4; i++) {
+    if (e.statusCode === 429 || /RateLimit/i.test(e.name ?? "")) return true;
+    e = (e.lastError ?? e.cause) as typeof e;
+  }
+  return false;
+}
+
+let rotation = 0;
+
+/** Tries each model in turn, starting at the next one in the rotation; moves on only on rate limits. */
+async function withModels<T>(models: string[], fn: (model: string) => Promise<T>): Promise<T> {
+  const start = rotation++;
+  for (let k = 0; k < models.length; k++) {
+    try {
+      return await fn(models[(start + k) % models.length]);
+    } catch (err) {
+      if (!isRateLimited(err)) throw err;
+    }
+  }
+  throw new RateLimitedError();
+}
+
 /** One structured call: the model must return JSON matching the schema. */
-async function structured<T>(schema: z.ZodType<T>, model: string, instructions: string, prompt: string, failure: string): Promise<T> {
+async function structured<T>(schema: z.ZodType<T>, models: string[], instructions: string, prompt: string, failure: string): Promise<T> {
   try {
-    const res = await generateText({ ...REQUEST, model, instructions, prompt, reasoning: "medium", output: Output.object({ schema }) });
-    return res.output;
+    return await withModels(models, async (model) => {
+      const res = await generateText({ ...REQUEST, model, instructions, prompt, reasoning: "medium", output: Output.object({ schema }) });
+      return res.output;
+    });
   } catch (err) {
     if (NoObjectGeneratedError.isInstance(err)) throw new EngineError(failure);
     throw err;
@@ -181,15 +227,17 @@ async function structured<T>(schema: z.ZodType<T>, model: string, instructions: 
 async function cloneTurn(events: DateEvent[], a: Person, b: Person, speaker: "a" | "b", scene: 1 | 2): Promise<DateEvent> {
   const self = speaker === "a" ? a : b;
   const other = speaker === "a" ? b : a;
-  const res = await generateText({
-    ...REQUEST,
-    model: CLONE_MODEL,
-    // Short in-character replies don't need deep thinking; low keeps turns fast.
-    reasoning: "low",
-    maxOutputTokens: 2000,
-    instructions: cloneSystem(self, other.name),
-    messages: cloneMessages(events, speaker),
-  });
+  const res = await withModels(CLONE_MODELS, (model) =>
+    generateText({
+      ...REQUEST,
+      model,
+      // Short in-character replies don't need deep thinking; low keeps turns fast.
+      reasoning: "low",
+      maxOutputTokens: 2000,
+      instructions: cloneSystem(self, other.name),
+      messages: cloneMessages(events, speaker),
+    }),
+  );
   if (res.finishReason === "content-filter") throw new EngineError(`${self.name}'s clone declined to answer.`);
   // Smaller models sometimes add a "Name:" label or wrap the line in quotes; strip both.
   const text = res.text
@@ -212,7 +260,7 @@ Rules:
 async function director(events: DateEvent[], a: Person, b: Person): Promise<StepResult> {
   const out = await structured(
     DirectorSchema,
-    SMART_MODEL,
+    SMART_MODELS,
     DIRECTOR_INSTRUCTIONS,
     `<person_a name="${a.name}">\n${profileBlock(a.profile)}\n</person_a>\n\n<person_b name="${b.name}">\n${profileBlock(b.profile)}\n</person_b>\n\n<scene_1>\n${transcriptText(events, a.name, b.name)}\n</scene_1>\n\nWrite scene 2. ${b.name} will respond first.`,
     "The director couldn't set up scene 2.",
@@ -232,7 +280,7 @@ Rules:
 export async function judge(events: DateEvent[], aName: string, bName: string): Promise<Report> {
   return structured(
     ReportSchema,
-    SMART_MODEL,
+    SMART_MODELS,
     JUDGE_INSTRUCTIONS,
     `<transcript>\n${transcriptText(events, aName, bName)}\n</transcript>`,
     "The judge couldn't write the report.",
@@ -266,7 +314,7 @@ const PROFILE_INSTRUCTIONS = `You turn a UChicago student's interview answers in
 export async function buildProfile(name: string, answers: { question: string; answer: string }[]): Promise<CloneProfile> {
   return structured(
     CloneProfileSchema,
-    SMART_MODEL,
+    SMART_MODELS,
     PROFILE_INSTRUCTIONS,
     `Name: ${name}\n\n${answers.map((qa) => `<qa>\nQ: ${qa.question}\nA: ${qa.answer}\n</qa>`).join("\n")}`,
     "Couldn't build your clone from those answers. Try again.",

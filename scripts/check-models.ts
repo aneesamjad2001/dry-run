@@ -7,7 +7,7 @@
 
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { CLONE_MODEL, SMART_MODEL } from "../lib/engine.ts";
+import { CLONE_MODELS, SMART_MODELS } from "../lib/engine.ts";
 
 async function check(label: string, fn: () => Promise<string>) {
   const t = Date.now();
@@ -22,24 +22,29 @@ async function check(label: string, fn: () => Promise<string>) {
   }
 }
 
-console.log(`clone model: ${CLONE_MODEL}\nsmart model: ${SMART_MODEL}\n`);
+console.log(`clone models: ${CLONE_MODELS.join(", ")}\nsmart models: ${SMART_MODELS.join(", ")}\n`);
 
-const ok1 = await check(`clone model replies in character`, async () => {
+let ok = true;
+for (const model of CLONE_MODELS) {
+  ok = (await check(`${model} replies in character`, async () => {
   const r = await generateText({
-    model: CLONE_MODEL,
+    model,
     instructions: "You are Maya on a first date over coffee. She won't date a smoker. Reply in 1-2 short sentences, in character.",
     prompt: "Sam: honestly my favourite part of a shift is the smoke break after. you smoke?",
   });
   return r.text.trim();
-});
+  })) && ok;
+}
 
-const ok2 = await check(`smart model returns structured output`, async () => {
+for (const model of SMART_MODELS) {
+  ok = (await check(`${model} returns structured output`, async () => {
   const r = await generateText({
-    model: SMART_MODEL,
+    model,
     output: Output.object({ schema: z.object({ clash: z.string(), starters: z.array(z.string()) }) }),
     prompt: "Maya won't date a smoker. Sam smokes after every shift and isn't quitting. Name the clash and give 2 conversation starters.",
   });
   return JSON.stringify(r.output);
-});
+  })) && ok;
+}
 
-process.exit(ok1 && ok2 ? 0 : 1);
+process.exit(ok ? 0 : 1);

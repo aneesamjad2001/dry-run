@@ -10,17 +10,32 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { actionAt, openingEvent, runStep, CLONE_MODEL, SMART_MODEL, type DateEvent, type Report } from "../lib/engine.ts";
+import { actionAt, isRateLimited, openingEvent, runStep, CLONE_MODELS, SMART_MODELS, RateLimitedError, type DateEvent, type Report } from "../lib/engine.ts";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Free-tier models allow 5 requests a minute each: when all are busy, wait and retry. */
+async function patiently<T>(fn: () => Promise<T>): Promise<T> {
+  for (let tries = 0; ; tries++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (tries >= 8 || !(err instanceof RateLimitedError || isRateLimited(err))) throw err;
+      await sleep(20_000);
+    }
+  }
+}
 import { PAIRS, type Pair } from "./pairs.ts";
 
 const GradeSchema = z.object({ named: z.boolean(), why: z.string() });
 
 async function grade(report: Report, clash: string): Promise<{ named: boolean; why: string }> {
-  const res = await generateText({
-    model: CLONE_MODEL,
+  const res = await patiently(() => generateText({
+    model: SMART_MODELS[SMART_MODELS.length - 1],
+    maxRetries: 0,
     output: Output.object({ schema: GradeSchema }),
     prompt: `A date report lists these clashes:\n${report.clashes.map((c) => `- ${c.point} (${c.evidence})`).join("\n")}\n\nThe planted clash was: ${clash}\n\nDoes the report clearly name the planted clash (same underlying issue, not just a vague nod)? Answer named=true or false.`,
-  });
+  }));
   return res.output;
 }
 
@@ -30,7 +45,7 @@ async function runPair(pair: Pair) {
   let report: Report | undefined;
   let target: string | undefined;
   for (let step = 0; actionAt(step).kind !== "done"; step++) {
-    const r = await runStep(step, events, pair.a, pair.b);
+    const r = await patiently(() => runStep(step, events, pair.a, pair.b));
     if (r.event) events.push(r.event);
     if (r.report) report = r.report;
     if (r.directorTarget) target = r.directorTarget;
@@ -46,7 +61,7 @@ if (!pairs.length) {
   process.exit(1);
 }
 
-console.log(`Running ${pairs.length} clone date(s) with clones=${CLONE_MODEL}, director/judge=${SMART_MODEL}\n`);
+console.log(`Running ${pairs.length} clone date(s) with clones=${CLONE_MODELS.join(", ")} · director/judge=${SMART_MODELS.join(", ")}\n`);
 const results = [];
 // One pair at a time by default: free-tier rate limits are low. EVAL_CONCURRENCY=3 to go faster.
 const PARALLEL = Math.max(1, Number(process.env.EVAL_CONCURRENCY) || 1);
