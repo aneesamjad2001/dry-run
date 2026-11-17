@@ -218,7 +218,7 @@ function ReportCard({ view, them }: { view: DateView; them: string }) {
   return (
     <section className="pop mt-10 rounded-3xl border border-line bg-card p-6 shadow-card">
       <p className="text-sm font-medium uppercase tracking-wide text-muted">After the date</p>
-      <h2 className="mt-1 font-serif text-4xl leading-tight">Why you and {them} should meet</h2>
+      <h2 className="mt-1 font-serif text-4xl leading-tight">Before you meet {them}</h2>
       <p className="mt-3 text-lg">{r.summary}</p>
 
       <h3 className="mt-6 font-semibold text-good">Where you click</h3>
@@ -226,7 +226,7 @@ function ReportCard({ view, them }: { view: DateView; them: string }) {
         {r.aligned.map((a) => (
           <li key={a.point}>
             {a.point}
-            <span className="mt-0.5 block text-sm italic text-muted">“{a.evidence}”</span>
+            <span className="mt-0.5 block text-sm italic text-muted">{a.evidence}</span>
           </li>
         ))}
       </ul>
@@ -236,7 +236,7 @@ function ReportCard({ view, them }: { view: DateView; them: string }) {
         {r.clashes.map((c) => (
           <li key={c.point}>
             {c.point}
-            <span className="mt-0.5 block text-sm italic text-muted">“{c.evidence}”</span>
+            <span className="mt-0.5 block text-sm italic text-muted">{c.evidence}</span>
           </li>
         ))}
       </ul>

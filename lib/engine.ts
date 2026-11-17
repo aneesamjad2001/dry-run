@@ -59,10 +59,10 @@ export type DateEvent = { speaker: Speaker; text: string; scene: 1 | 2 };
 
 export const ReportSchema = z.object({
   aligned: z
-    .array(z.object({ point: z.string(), evidence: z.string().describe("A short quote or moment from the date.") }))
+    .array(z.object({ point: z.string(), evidence: z.string().describe("A short quote from the date, as Name: \"words\".") }))
     .describe("2-4 places they genuinely lined up."),
   clashes: z
-    .array(z.object({ point: z.string(), evidence: z.string().describe("A short quote or moment from the date.") }))
+    .array(z.object({ point: z.string(), evidence: z.string().describe("A short quote from the date, as Name: \"words\".") }))
     .describe("1-3 places they would clash. Never empty: name the biggest difference even if it is small."),
   starters: z.array(z.string()).describe("Exactly 3 specific conversation starters for a real first date, built on what came up."),
   held_positions: z
@@ -136,7 +136,7 @@ ${profileBlock(self.profile)}
 </profile>
 
 How to play it:
-- Talk like a real person on a first date: 1-3 short sentences per message, in ${self.name}'s voice. No stage directions, no narration, no name labels.
+- Talk like a real person texting on a first date: 1-3 short sentences, under 40 words, in ${self.name}'s voice. No stage directions, no narration, no name labels.
 - Hold ${self.name}'s real positions. When ${other} says something that conflicts with ${self.name}'s values, money habits or dealbreakers, say so plainly and kindly, the way ${self.name} actually would. Do not agree just to be pleasant, and only change your mind if you are genuinely persuaded.
 - When a dealbreaker becomes relevant, let it show honestly; don't hide it to keep things smooth.
 - Don't invent big facts that the profile doesn't support. Small everyday details are fine.
