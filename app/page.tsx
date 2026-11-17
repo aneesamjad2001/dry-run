@@ -56,14 +56,17 @@ export default async function Landing() {
             sizes="(min-width: 768px) 340px, 100vw"
             className="aspect-[4/5] w-full rounded-3xl object-cover shadow-card"
           />
-          <div className="absolute -bottom-6 -left-4 max-w-[85%] rounded-2xl border border-line bg-card p-3 text-sm shadow-card sm:-left-8">
-            <div className="flex gap-2">
-              <span className="rounded-full bg-good-soft px-2.5 py-0.5 text-xs font-semibold text-good">You click</span>
-              <span>Both love the lake at 6am</span>
-            </div>
-            <div className="mt-1.5 flex gap-2">
-              <span className="rounded-full bg-warn-soft px-2.5 py-0.5 text-xs font-semibold text-warn">Talk about</span>
-              <span>Saving vs. that $300 trip</span>
+          <div className="absolute -bottom-6 -left-4 w-max max-w-[92%] sm:max-w-none rounded-2xl border border-line bg-card px-4 py-3 text-sm shadow-card sm:-left-8">
+            <p className="text-xs font-medium text-muted">Before you meet Sam</p>
+            <div className="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
+              <span className="whitespace-nowrap rounded-full bg-good-soft px-2.5 py-1 text-center text-xs font-semibold leading-none text-good">
+                You click
+              </span>
+              <span className="leading-snug sm:whitespace-nowrap">Both love the lake at 6am</span>
+              <span className="whitespace-nowrap rounded-full bg-warn-soft px-2.5 py-1 text-center text-xs font-semibold leading-none text-warn">
+                Talk about
+              </span>
+              <span className="leading-snug sm:whitespace-nowrap">Saving vs. that $300 trip</span>
             </div>
           </div>
         </div>
