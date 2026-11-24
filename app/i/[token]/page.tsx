@@ -42,11 +42,11 @@ export default async function InvitePage({ params }: PageProps<"/i/[token]">) {
       </h1>
       <ol className="mt-6 space-y-3 text-[15px]">
         <li>
-          <strong>1. You answer 8 quick questions</strong> so your clone knows what you care about and how you text. Only your clone sees your
+          <strong>1. You spend about 5 minutes on a few questions</strong> so your clone knows what you care about and how you text. Only your clone sees your
           answers.
         </li>
         <li>
-          <strong>2. Your clones meet for coffee.</strong> You can watch the conversation.
+          <strong>2. Your clones meet up.</strong> You can watch the conversation.
         </li>
         <li>
           <strong>3. You both get a short report:</strong> where you click, where you&apos;d clash, and what to ask each other. If you both want to

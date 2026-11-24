@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { actionAt, cloneMessages, openingEvent, TOTAL_STEPS, type DateEvent } from "./engine.ts";
+import { actionAt, dropEcho, cloneMessages, cloneSystem, openingEvent, turnNote, unknownTopics, TOTAL_STEPS, type DateEvent } from "./engine.ts";
 
 test("schedule: scene 1, director, scene 2 (B first), judge, done", () => {
   const kinds = Array.from({ length: TOTAL_STEPS + 1 }, (_, i) => {
@@ -67,4 +67,43 @@ test("cleanCloneLine survives names with regex characters (security review M1)",
   const t = Date.now();
   cleanCloneLine("A".repeat(40) + "!", "(a*)*b", "x");
   assert.ok(Date.now() - t < 100, "no catastrophic backtracking");
+});
+
+test("a clone is told its stated facts, and never to make things up", () => {
+  const profile = {
+    summary: "s", looking_for: "l", values: [], dealbreakers: ["Must love dogs."], conflict_style: "c", money: "m",
+    interests: [], opinions: [], voice: "v", sample_lines: [], facts: ["Doesn't drink coffee; prefers tea."],
+  };
+  const withFacts = cloneSystem({ name: "Lauren", profile }, "Leo");
+  assert.match(withFacts, /Facts about them: Doesn't drink coffee; prefers tea\./);
+  assert.match(withFacts, /The profile is everything you know about Lauren/);
+  assert.match(withFacts, /ask me that one in person/);
+  // Clones saved before facts existed still work.
+  assert.match(cloneSystem({ name: "Lauren", profile: { ...profile, facts: undefined } }, "Leo"), /Facts about them: none stated/);
+});
+
+test("the first scene doesn't assume anyone drinks coffee", () => {
+  assert.doesNotMatch(openingEvent("Lauren", "Leo").text, /for coffee/);
+});
+
+test("every turn reminds a clone what its profile is silent on", () => {
+  const base = { summary: "Just graduated.", looking_for: "friends", values: [], conflict_style: "talks it out", money: "saves a lot", interests: [], opinions: [], voice: "v", sample_lines: [] };
+  const lauren = { ...base, dealbreakers: ["Won't date a smoker."], facts: ["Doesn't drink coffee; prefers tea."] };
+  const unknown = unknownTopics(lauren);
+  assert.ok(unknown.some((u) => u.startsWith("pets")));
+  assert.ok(!unknown.includes("whether they drink coffee or tea"));
+  // Her own dealbreaker isn't an unknown topic: she can talk about smoking.
+  assert.ok(!unknown.includes("whether they smoke or vape"));
+  const note = turnNote({ name: "Lauren", profile: lauren });
+  assert.match(note, /True about Lauren[^\]]*Doesn't drink coffee/);
+  assert.match(note, /NOT in Lauren's profile:[^\]]*pets/);
+  // Once they tap "I have a dog", it is no longer unknown.
+  assert.ok(!unknownTopics({ ...lauren, facts: ["Has a dog and loves dogs."] }).some((u) => u.startsWith("pets")));
+});
+
+test("a clone that repeats the line it just heard keeps only its own answer (seen in evals)", () => {
+  const heard = "lol fair, but that's a bit of a dealbreaker for me. what do you usually do on those trips?";
+  assert.equal(dropEcho(`${heard}\n\non those trips, it's usually street food.`, heard), "on those trips, it's usually street food.");
+  assert.equal(dropEcho("lol fair", "lol fair"), "lol fair", "short lines can honestly match");
+  assert.equal(dropEcho("hi", undefined), "hi");
 });

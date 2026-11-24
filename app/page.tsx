@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 
 const PHOTOS = {
   laugh: {
@@ -25,8 +24,9 @@ const PHOTOS = {
 };
 
 export default async function Landing() {
+  // Signed-in people can read this page too: the logo always brings you back here.
   const { userId } = await auth();
-  if (userId) redirect("/home");
+  const signedIn = !!userId;
 
   return (
     <div className="space-y-20 py-4">
@@ -41,10 +41,19 @@ export default async function Landing() {
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <Link href="/home" className="btn btn-primary">
-              Try a dry run
+              {signedIn ? "Go to my dry runs" : "Try a dry run"}
             </Link>
-            <span className="text-sm text-muted">For UChicago students · free · about 5 minutes</span>
+            <span className="text-sm text-muted">Free · about 5 minutes</span>
           </div>
+          {!signedIn && (
+            <p className="mt-5 inline-flex items-start gap-3 rounded-2xl border border-accent/40 bg-accent-soft px-4 py-3 text-[15px]">
+              <span aria-hidden>🎓</span>
+              <span>
+                <strong>UChicago students only, for now.</strong> You&apos;ll sign in with your <strong>@uchicago.edu</strong> email, so everyone
+                here is a real classmate. Other emails won&apos;t work yet.
+              </span>
+            </p>
+          )}
         </div>
         <div className="relative">
           <Image
@@ -76,8 +85,8 @@ export default async function Landing() {
         <h2 className="font-serif text-4xl">How it works</h2>
         <ol className="mt-6 grid gap-4 sm:grid-cols-3">
           {[
-            ["Tell us who you are", "Eight quick questions. Your clone learns what you care about, what you won't budge on, and how you text."],
-            ["Send the link to your match", "When they build their clone too, the two clones meet for coffee. You can watch it happen."],
+            ["Tell us who you are", "About five minutes: a few taps, then questions in your own words, typed or spoken. Your clone learns what you care about, what you won't budge on, and how you text."],
+            ["Send the link to your match", "When they build their clone too, the two clones meet up. You can watch it happen."],
             ["Get a reason to meet", "Where you click, where you'd clash, three things to ask each other. If you both say yes, you swap numbers."],
           ].map(([t, d], i) => (
             <li key={t} className="rounded-2xl border border-line bg-card p-5">
@@ -103,6 +112,10 @@ export default async function Landing() {
           <p className="mt-4">
             A quiz tells you whether you match <em>on paper</em>. But everyone says they&apos;re &ldquo;easygoing about money&rdquo; until a friend
             invites you both on a $300 weekend. A dry run puts your clones in that moment and shows how it actually plays out.
+          </p>
+          <p className="mt-3">
+            Your clone never makes things up about you, either. If your date asks something you didn&apos;t tell it, it says &ldquo;ask me in
+            person&rdquo;, and the report lists what&apos;s still to find out.
           </p>
           <p className="mt-3">
             And there&apos;s no score. Research says nobody can predict chemistry from a profile, so we don&apos;t pretend to. You get something to
@@ -131,8 +144,9 @@ export default async function Landing() {
             ))}
           </ul>
           <Link href="/home" className="btn btn-primary mt-8">
-            Build your clone
+            {signedIn ? "Go to my dry runs" : "Build your clone"}
           </Link>
+          {!signedIn && <p className="mt-3 text-sm text-muted">You&apos;ll need a @uchicago.edu email to sign in.</p>}
         </div>
         <Image
           src={PHOTOS.walk.src}

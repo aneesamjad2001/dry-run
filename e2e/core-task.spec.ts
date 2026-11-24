@@ -19,7 +19,7 @@ async function signIn(browser: Browser, email: string): Promise<Page> {
   return page;
 }
 
-async function interview(page: Page, who: { name: string; year: string; bio: string; contact: string; answers: string[] }, shot: string) {
+async function interview(page: Page, who: { name: string; year: string; bio: string; contact: string; facts: Record<string, string>; answers: string[] }, shot: string) {
   await expect(page.getByRole("heading", { name: /build your clone/i })).toBeVisible();
   await page.getByLabel("First name").fill(who.name);
   await page.getByLabel("Year and major").fill(who.year);
@@ -27,12 +27,34 @@ async function interview(page: Page, who: { name: string; year: string; bio: str
   await page.getByLabel("How should a match reach you?").fill(who.contact);
   await page.screenshot({ path: `${SHOTS}/${shot}-1-about.png`, fullPage: true });
   await page.getByRole("button", { name: "Next" }).click();
+
+  // Quick facts: one tap each.
+  await expect(page.getByRole("heading", { name: "A few things a date would ask." })).toBeVisible();
+  for (const [question, option] of Object.entries(who.facts)) {
+    await page.getByRole("group", { name: question }).getByRole("button", { name: option, exact: true }).click();
+  }
+  await page.screenshot({ path: `${SHOTS}/${shot}-2-facts.png`, fullPage: true });
+  await page.getByRole("button", { name: "Next" }).click();
+
   for (const [i, a] of who.answers.entries()) {
     await page.locator("#answer").fill(a);
     if (i === 2) await page.screenshot({ path: `${SHOTS}/${shot}-2-question.png`, fullPage: true });
-    await page.getByRole("button", { name: i === who.answers.length - 1 ? "Build my clone" : "Next" }).click();
+    await page.getByRole("button", { name: "Next" }).click();
   }
-  await expect(page.getByRole("heading", { name: "Does this sound like you?" })).toBeVisible({ timeout: 90_000 });
+
+  // Follow-ups are written for this person, so there may be 0 to 3 of them.
+  const review = page.getByRole("heading", { name: "Does this sound like you?" });
+  const followUp = page.getByText("One more thing");
+  for (let n = 0; n < 4; n++) {
+    await expect(review.or(followUp)).toBeVisible({ timeout: 120_000 });
+    if (await review.isVisible()) break;
+    const asked = await page.locator("label[for=answer]").innerText();
+    if (n === 0) await page.screenshot({ path: `${SHOTS}/${shot}-2-follow-up.png`, fullPage: true });
+    await page.locator("#answer").fill(who.answers[3]); // any honest answer: the money one
+    await page.getByRole("button", { name: /^(Next|Build my clone)$/ }).click();
+    await expect(page.locator("label[for=answer]").filter({ hasText: asked })).toBeHidden({ timeout: 120_000 });
+  }
+  await expect(review).toBeVisible({ timeout: 120_000 });
   await page.screenshot({ path: `${SHOTS}/${shot}-3-review.png`, fullPage: true });
   await page.getByRole("button", { name: "That's me" }).click();
 }
@@ -42,6 +64,7 @@ const ALEX_PROFILE = {
   year: "Third-year · Economics",
   bio: "Lake runs, cheap ramen, and arguing about the best study spot.",
   contact: "@alex.runs on Instagram",
+  facts: { "Do you smoke or vape?": "Never", "How do you eat?": "Everything", "Pets?": "Love them, none yet", "Kids someday?": "Yes" },
   answers: [
     "up at 7, run along the lake to the point, then ramen in chinatown with my roommate and a movie at the music box",
     "something serious honestly. im tired of talking to people for weeks and never meeting",
@@ -59,6 +82,7 @@ const SAM_PROFILE = {
   year: "Fourth-year · Anthropology",
   bio: "Fourteen countries, film cameras, live music at the Empty Bottle.",
   contact: "sam.e2e@example.com",
+  facts: { "Do you smoke or vape?": "Sometimes", "How do you eat?": "Vegetarian", "Coffee?": "Tea person", "Friday night?": "Out" },
   answers: [
     "sleep in, film photography walk through pilsen, tacos, then a show at the empty bottle",
     "open to something serious if they like adventures",
@@ -74,7 +98,7 @@ const SAM_PROFILE = {
 test("a new person does the whole core task, then invites a match", async ({ browser }) => {
   // ---- 1. Alex: sign up, build a clone, dry run with a demo person --------------------
   const alex = await signIn(browser, ALEX);
-  await alex.goto("/");
+  await alex.goto("/home");
   await alex.waitForURL(/\/interview/); // signed in, no clone yet: straight to the interview
   await interview(alex, ALEX_PROFILE, "1-alex");
 

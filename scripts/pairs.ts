@@ -22,7 +22,10 @@ function person(name: string, p: Partial<CloneProfile> & Pick<CloneProfile, "sum
   };
 }
 
-export type Pair = { id: string; clash: string; a: Person; b: Person };
+// `unknown` is something one of them needs to know that the other's profile doesn't
+// say. A good date asks about it, gets "ask me in person" rather than a guess, and the
+// report lists it under "still to find out".
+export type Pair = { id: string; clash: string; unknown?: string; a: Person; b: Person };
 
 export const PAIRS: Pair[] = [
   {
@@ -104,5 +107,26 @@ export const PAIRS: Pair[] = [
     clash: "Lily wants a serious relationship; Kai only wants something casual.",
     a: person("Lily", { summary: "Third-year in neuroscience, pre-med.", looking_for: "A serious relationship. She's done with situationships.", dealbreakers: ["Someone who just wants something casual."] }),
     b: person("Kai", { summary: "Second-year in visual arts, studying abroad next year.", looking_for: "Casual only. Not looking for anything serious before he leaves.", dealbreakers: ["Commitment right now."] }),
+  },
+  {
+    // From TA feedback on v1: a clone said "I have a dog" when its person had only said a
+    // partner must love dogs, and offered coffee and tacos to someone it knew nothing about.
+    id: "dogs",
+    clash: "Lauren saves hard and says no to last-minute trips; Theo books the trip and worries about money later.",
+    unknown: "Whether Theo loves dogs. Lauren needs a partner who does, and Theo's profile says nothing about dogs.",
+    a: person("Lauren", {
+      summary: "Just graduated, likes good food and a quiet weekend.",
+      dealbreakers: ["Must love dogs."],
+      money: "Saves a lot. Says no to last-minute trips even when the price is good.",
+      interests: ["trying new restaurants", "long walks"],
+      facts: ["Doesn't drink coffee; prefers tea.", "Is vegetarian: no meat or fish."],
+    }),
+    b: person("Theo", {
+      summary: "Third-year in anthropology who has been to fourteen countries.",
+      dealbreakers: ["A partner who never wants to travel."],
+      money: "Spends on trips first and works out the budget after.",
+      interests: ["travel", "film photography", "street food"],
+      facts: ["Eats everything, meat included."],
+    }),
   },
 ];

@@ -11,9 +11,12 @@ export default function UChicagoOnly() {
         Dry Run is starting with UChicago students, so everyone you meet here is a real classmate. Sign in with your @{allowedDomain} email to
         continue.
       </p>
-      <div className="mt-8">
+      <div className="mt-8 flex flex-wrap justify-center gap-3">
         <SignOutButton redirectUrl="/sign-in">
-          <button className="btn btn-primary">Use a different email</button>
+          <button className="btn btn-primary">Use my UChicago email</button>
+        </SignOutButton>
+        <SignOutButton redirectUrl="/">
+          <button className="btn btn-ghost">Back to the home page</button>
         </SignOutButton>
       </div>
     </div>

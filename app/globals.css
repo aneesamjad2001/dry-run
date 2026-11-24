@@ -113,6 +113,27 @@ body {
   background: var(--soft);
 }
 
+.chip {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--fg);
+  font-size: 15px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.chip:hover {
+  background: var(--soft);
+}
+.chip-on,
+.chip-on:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .field {
   width: 100%;
   background: var(--card);

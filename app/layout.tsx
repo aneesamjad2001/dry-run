@@ -16,7 +16,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${serif.variable} ${sans.variable}`}>
       <body className="min-h-dvh font-sans text-[16px] leading-relaxed">
-        <ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up">
+        <ClerkProvider
+          signInUrl="/sign-in"
+          signUpUrl="/sign-up"
+          // Name the app ourselves, whatever the Clerk dashboard calls the application.
+          localization={{
+            signIn: { start: { title: "Sign in to Dry Run", subtitle: "Use your @uchicago.edu email" } },
+            signUp: { start: { title: "Join Dry Run", subtitle: "Use your @uchicago.edu email" } },
+          }}
+        >
           <Header />
           <main className="mx-auto w-full max-w-3xl px-4 pb-20 pt-6">{children}</main>
         </ClerkProvider>

@@ -1,5 +1,5 @@
 import { requireViewer } from "@/lib/viewer";
-import { QUESTIONS } from "@/lib/questions";
+import { unpackAnswers } from "@/lib/questions";
 import { Interview } from "@/components/Interview";
 
 export const metadata = { title: "Build your clone" };
@@ -16,6 +16,7 @@ export default async function InterviewPage({ searchParams }: PageProps<"/interv
   const next = safeNext(sp.next);
   const v = await requireViewer(`/interview${next ? `?next=${encodeURIComponent(next)}` : ""}`);
   const p = v.profile;
+  const saved = unpackAnswers(p?.answers ?? []);
   return (
     <Interview
       next={next}
@@ -25,7 +26,8 @@ export default async function InterviewPage({ searchParams }: PageProps<"/interv
         year: p?.year ?? "",
         bio: p?.bio ?? "",
         contact: p?.contact ?? "",
-        answers: QUESTIONS.map((_, i) => p?.answers[i]?.answer ?? ""),
+        answers: saved.core,
+        facts: saved.facts,
       }}
     />
   );

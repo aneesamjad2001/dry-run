@@ -248,6 +248,18 @@ function ReportCard({ view, them }: { view: DateView; them: string }) {
         ))}
       </ul>
 
+      {!!r.open_questions?.length && (
+        <>
+          <h3 className="mt-6 font-semibold">Still to find out</h3>
+          <p className="text-sm text-muted">Your clones didn&apos;t know these, and they don&apos;t guess. Ask in person.</p>
+          <ul className="mt-2 list-disc space-y-1.5 pl-5">
+            {r.open_questions.map((q) => (
+              <li key={q}>{q}</li>
+            ))}
+          </ul>
+        </>
+      )}
+
       <h3 className="mt-6 font-semibold">Ask each other</h3>
       <ul className="mt-2 space-y-2">
         {r.starters.map((s) => (

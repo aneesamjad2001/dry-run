@@ -11,6 +11,7 @@ import {
   type Person,
   type Report,
 } from "./engine";
+import type { StoredAnswer } from "./questions";
 
 // Everything that reads or writes the database goes through here, and every function
 // that returns data to a person returns ONLY what that person may see: never another
@@ -22,7 +23,7 @@ export type ProfileRow = {
   year: string;
   bio: string;
   contact: string;
-  answers: { question: string; answer: string }[];
+  answers: StoredAnswer[];
   clone: CloneProfile;
   is_demo: boolean;
 };
@@ -50,7 +51,7 @@ export class UserError extends Error {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAILY_DATE_LIMIT = 8; // dry runs a person can start per day; keeps model spend bounded
-export const DAILY_BUILD_LIMIT = 6; // clone (re)builds per day
+export const DAILY_BUILD_LIMIT = 12; // smart-model calls on the interview per day: each follow-up round and each clone build takes one
 
 function check<T>(res: { data: T; error: { message: string } | null }): T {
   if (res.error) throw new Error(res.error.message);

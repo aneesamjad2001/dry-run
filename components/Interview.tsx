@@ -2,35 +2,62 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { MAX_ANSWER, MIN_ANSWER, QUESTIONS } from "@/lib/questions";
-import type { CloneProfile } from "@/lib/engine";
+import { FACTS, MAX_ANSWER, MIN_ANSWER, QUESTIONS, type FactChoices } from "@/lib/questions";
+import type { CloneProfile, FollowUp } from "@/lib/engine";
+import { Dictate } from "./Dictate";
 
 type Basics = { name: string; year: string; bio: string; contact: string };
 
-export function Interview({ initial, next, isRedo }: { initial: Basics & { answers: string[] }; next: string | null; isRedo: boolean }) {
+// The steps, in order: about you, quick facts (taps), the questions in your own words,
+// then up to three follow-ups written for this person once the questions are done.
+const FACTS_STEP = 1;
+const FIRST_Q = 2;
+
+export function Interview({ initial, next, isRedo }: { initial: Basics & { answers: string[]; facts: FactChoices }; next: string | null; isRedo: boolean }) {
   const router = useRouter();
   const [basics, setBasics] = useState<Basics>({ name: initial.name, year: initial.year, bio: initial.bio, contact: initial.contact });
   const [answers, setAnswers] = useState<string[]>(initial.answers);
-  // 0 = about you, 1..N = questions, then building, then review
+  const [facts, setFacts] = useState<FactChoices>(initial.facts);
+  // null = not asked yet. Asked once the typed questions are done.
+  const [followUps, setFollowUps] = useState<(FollowUp & { answer: string })[] | null>(null);
   const [step, setStep] = useState(0);
-  const [phase, setPhase] = useState<"asking" | "building" | "review">("asking");
+  const [phase, setPhase] = useState<"asking" | "thinking" | "building" | "review">("asking");
   const [clone, setClone] = useState<CloneProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const total = QUESTIONS.length;
-  const qi = step - 1;
-  const current = qi >= 0 ? answers[qi] : "";
-  const canNext = step === 0 ? basics.name.trim().length > 0 && basics.contact.trim().length > 0 : current.trim().length >= MIN_ANSWER;
+  const qi = step - FIRST_Q; // index into QUESTIONS, when on a typed question
+  const fi = step - FIRST_Q - total; // index into followUps, when on a follow-up
+  const onQuestion = qi >= 0 && qi < total;
+  const onFollowUp = fi >= 0 && !!followUps?.[fi];
+  const current = onQuestion ? answers[qi] : onFollowUp ? followUps![fi].answer : "";
+  const lastStep = FIRST_Q + total + (followUps?.length ?? 0) - 1;
+  const canNext =
+    step === 0
+      ? basics.name.trim().length > 0 && basics.contact.trim().length > 0
+      : onQuestion
+        ? current.trim().length >= MIN_ANSWER
+        : true; // quick facts and follow-ups can be skipped
+  // The bar leaves room for follow-ups before we know how many there are.
+  const progress = step / (FIRST_Q + total + (followUps?.length ?? 2));
+
+  const payload = () => ({
+    ...basics,
+    answers,
+    facts,
+    followUps: (followUps ?? []).map((f) => ({ question: f.q, answer: f.answer })),
+  });
+
+  function setCurrent(text: string) {
+    if (onQuestion) setAnswers(answers.map((a, i) => (i === qi ? text : a)));
+    else if (onFollowUp) setFollowUps(followUps!.map((f, i) => (i === fi ? { ...f, answer: text } : f)));
+  }
 
   async function build() {
     setPhase("building");
     setError(null);
     try {
-      const res = await fetch("/api/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...basics, answers }),
-      });
+      const res = await fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
       setClone(data.clone);
@@ -41,10 +68,46 @@ export function Interview({ initial, next, isRedo }: { initial: Basics & { answe
     }
   }
 
+  /** Ask for follow-ups. If that fails for any reason, carry on without them. */
+  async function askFollowUps() {
+    setPhase("thinking");
+    setError(null);
+    let asked: FollowUp[] = [];
+    try {
+      const res = await fetch("/api/profile/followups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.questions)) asked = data.questions;
+    } catch {
+      // No follow-ups this time.
+    }
+    setFollowUps(asked.map((f) => ({ ...f, answer: "" })));
+    if (asked.length) {
+      setStep(FIRST_Q + total);
+      setPhase("asking");
+    } else {
+      build();
+    }
+  }
+
   function goNext() {
     if (!canNext) return;
-    if (step < total) setStep(step + 1);
+    if (step === FIRST_Q + total - 1 && followUps === null) askFollowUps();
+    else if (step < lastStep) setStep(step + 1);
     else build();
+  }
+
+  if (phase === "thinking") {
+    return (
+      <div className="py-24 text-center" role="status">
+        <p className="font-serif text-4xl">Reading what you wrote…</p>
+        <p className="mt-3 text-muted">A couple of follow-up questions are on the way, so your clone doesn&apos;t have to guess.</p>
+        <p className="typing mt-6 text-accent" aria-hidden>
+          <span />
+          <span />
+          <span />
+        </p>
+      </div>
+    );
   }
 
   if (phase === "building") {
@@ -79,6 +142,15 @@ export function Interview({ initial, next, isRedo }: { initial: Basics & { answe
             </ul>
           </Row>
           <Row label="In a disagreement">{clone.conflict_style}</Row>
+          {!!clone.facts?.length && (
+            <Row label="Knows for sure">
+              <ul className="list-disc pl-5">
+                {clone.facts.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+            </Row>
+          )}
           <Row label="Sounds like">
             <div className="flex flex-wrap gap-2">
               {clone.sample_lines.map((l) => (
@@ -89,6 +161,9 @@ export function Interview({ initial, next, isRedo }: { initial: Basics & { answe
             </div>
           </Row>
         </div>
+        <p className="mt-4 text-sm text-muted">
+          Your clone only says what&apos;s here. If your date asks about anything else, it says &ldquo;ask me in person&rdquo; instead of guessing.
+        </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <button className="btn btn-primary" onClick={() => router.push(next ?? "/home")}>
             That&apos;s me
@@ -97,7 +172,8 @@ export function Interview({ initial, next, isRedo }: { initial: Basics & { answe
             className="btn btn-ghost"
             onClick={() => {
               setPhase("asking");
-              setStep(1);
+              setFollowUps(null); // changed answers get fresh follow-ups
+              setStep(FACTS_STEP);
             }}
           >
             Change my answers
@@ -109,13 +185,8 @@ export function Interview({ initial, next, isRedo }: { initial: Basics & { answe
 
   return (
     <div className="mx-auto max-w-xl py-6">
-      <div className="mb-8 flex items-center gap-3" aria-hidden>
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-soft">
-          <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${(step / (total + 1)) * 100}%` }} />
-        </div>
-        <span className="text-xs tabular-nums text-muted">
-          {step + 1} / {total + 1}
-        </span>
+      <div className="mb-8 h-1.5 overflow-hidden rounded-full bg-soft" role="progressbar" aria-label="Interview progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
+        <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progress * 100}%` }} />
       </div>
 
       <form
@@ -128,7 +199,8 @@ export function Interview({ initial, next, isRedo }: { initial: Basics & { answe
           <>
             <h1 className="font-serif text-5xl leading-tight">{isRedo ? "Update your clone" : "Let's build your clone"}</h1>
             <p className="mt-3 text-muted">
-              {total} short questions, about 5 minutes. Answer like you&apos;re texting a friend: your clone will talk the way you write.
+              About 5 minutes. First the basics, then a few quick taps, then some questions in your own words. Answer like you&apos;re texting a
+              friend: your clone will talk the way you write.
             </p>
             <div className="mt-8 space-y-5">
               <Field label="First name" hint="What your dates will call you.">
@@ -149,25 +221,62 @@ export function Interview({ initial, next, isRedo }: { initial: Basics & { answe
               </Field>
             </div>
           </>
+        ) : step === FACTS_STEP ? (
+          <>
+            <p className="text-sm font-medium text-accent">The quick ones</p>
+            <h1 className="mt-2 font-serif text-4xl leading-tight">A few things a date would ask.</h1>
+            <p className="mt-2 text-muted">
+              Tap what&apos;s true for you. This is how your clone knows whether you smoke or eat meat instead of guessing, and how it can answer
+              someone else&apos;s dealbreakers honestly. Skip any you&apos;d rather keep for the real date.
+            </p>
+            <div className="mt-8 space-y-6">
+              {FACTS.map((f) => (
+                <fieldset key={f.id}>
+                  <legend className="font-medium">{f.q}</legend>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {f.options.map((o) => {
+                      const on = facts[f.id] === o.label;
+                      return (
+                        <button
+                          key={o.label}
+                          type="button"
+                          aria-pressed={on}
+                          className={`chip ${on ? "chip-on" : ""}`}
+                          onClick={() => {
+                            const rest = { ...facts };
+                            delete rest[f.id];
+                            setFacts(on ? rest : { ...rest, [f.id]: o.label });
+                          }}
+                        >
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              ))}
+            </div>
+          </>
         ) : (
           <>
-            <p className="text-sm font-medium text-accent">Question {step} of {total}</p>
+            <p className="text-sm font-medium text-accent">{onFollowUp ? "One more thing" : "In your own words"}</p>
             <label htmlFor="answer" className="mt-2 block font-serif text-4xl leading-tight">
-              {QUESTIONS[qi].q}
+              {onFollowUp ? followUps![fi].q : QUESTIONS[qi].q}
             </label>
-            <p className="mt-2 text-muted">{QUESTIONS[qi].hint}</p>
+            <p className="mt-2 text-muted">{onFollowUp ? followUps![fi].hint : QUESTIONS[qi].hint}</p>
             <textarea
               id="answer"
-              key={qi}
+              key={step}
               autoFocus
               className="field mt-6 min-h-40"
               maxLength={MAX_ANSWER}
               value={current}
-              onChange={(e) => setAnswers(answers.map((a, i) => (i === qi ? e.target.value : a)))}
+              onChange={(e) => setCurrent(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) goNext();
               }}
             />
+            <Dictate key={`mic-${step}`} onText={(t) => setCurrent(`${current.trim()} ${t}`.trim().slice(0, MAX_ANSWER))} />
           </>
         )}
 
@@ -186,7 +295,7 @@ export function Interview({ initial, next, isRedo }: { initial: Basics & { answe
             <span />
           )}
           <button type="submit" className="btn btn-primary" disabled={!canNext}>
-            {step === total ? "Build my clone" : "Next"}
+            {followUps !== null && step === lastStep ? "Build my clone" : onFollowUp && !current.trim() ? "Skip" : "Next"}
           </button>
         </div>
       </form>
