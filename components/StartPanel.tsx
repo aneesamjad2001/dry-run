@@ -98,7 +98,7 @@ export function StartPanel({ demos }: { demos: PublicPerson[] }) {
         <ul className="mt-5 grid gap-3 sm:grid-cols-2">
           {demos.map((p) => (
             <li key={p.id} className="flex items-center gap-4 rounded-2xl border border-line bg-card p-4">
-              <Avatar name={p.name} />
+              <Avatar name={p.name} photo={p.photo} size={56} />
               <div className="min-w-0 flex-1">
                 <p className="font-medium">
                   {p.name} <span className="ml-1 rounded-full bg-soft px-2 py-0.5 text-xs font-medium text-muted">Demo</span>

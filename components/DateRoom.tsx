@@ -82,8 +82,8 @@ export function DateRoom({ initial }: { initial: DateView }) {
     <div className="mx-auto max-w-xl py-4">
       <div className="flex items-center gap-3">
         <div className="flex -space-x-3">
-          <Avatar name={view.meName} />
-          <Avatar name={them} />
+          <Avatar name={view.meName} photo={view.mePhoto} />
+          <Avatar name={them} photo={view.them?.photo} />
         </div>
         <div>
           <p className="font-semibold">

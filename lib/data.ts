@@ -26,6 +26,7 @@ export type ProfileRow = {
   answers: StoredAnswer[];
   clone: CloneProfile;
   is_demo: boolean;
+  photo_key?: string | null;
 };
 
 type DateRow = {
@@ -65,7 +66,7 @@ export async function getProfile(userId: string): Promise<ProfileRow | null> {
   return check(await db().from("profiles").select("*").eq("user_id", userId).maybeSingle()) as ProfileRow | null;
 }
 
-export async function saveProfile(userId: string, p: Omit<ProfileRow, "user_id" | "is_demo">): Promise<void> {
+export async function saveProfile(userId: string, p: Omit<ProfileRow, "user_id" | "is_demo" | "photo_key">): Promise<void> {
   check(await db().from("profiles").upsert({ user_id: userId, ...p, is_demo: false }));
 }
 
@@ -74,15 +75,53 @@ export async function deleteProfile(userId: string): Promise<void> {
   check(await db().from("profiles").delete().eq("user_id", userId).eq("is_demo", false));
 }
 
-export type PublicPerson = { id: string; name: string; year: string; bio: string; isDemo: boolean };
+export type PublicPerson = { id: string; name: string; year: string; bio: string; isDemo: boolean; photo: string | null };
 
-function publicPerson(p: Pick<ProfileRow, "user_id" | "name" | "year" | "bio" | "is_demo">): PublicPerson {
+/** Where the browser loads this person's picture from, or null if they haven't added one. */
+export function photoUrl(p: Pick<ProfileRow, "user_id" | "is_demo" | "photo_key">): string | null {
+  // Demo people have illustrated portraits in public/demo. Real photos go through the
+  // server route, addressed by a random key, never by user id.
+  if (p.is_demo) return `/demo/${p.user_id.replace(/^demo_/, "").replace(/[^a-z]/g, "")}.svg`;
+  return p.photo_key ? `/api/photos/${p.photo_key}` : null;
+}
+
+function publicPerson(p: Pick<ProfileRow, "user_id" | "name" | "year" | "bio" | "is_demo" | "photo_key">): PublicPerson {
   // Only demo ids go to the browser (needed to start a demo date); real users' ids stay server-side.
-  return { id: p.is_demo ? p.user_id : "", name: p.name, year: p.year, bio: p.bio, isDemo: p.is_demo };
+  return { id: p.is_demo ? p.user_id : "", name: p.name, year: p.year, bio: p.bio, isDemo: p.is_demo, photo: photoUrl(p) };
+}
+
+// Photos are opt-in. The browser shrinks the picture to a small square JPEG first; the
+// server still checks what it was sent.
+const MAX_PHOTO_BYTES = 200_000;
+
+export async function savePhoto(userId: string, dataUrl: string): Promise<string> {
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  if (!m) throw new UserError("That picture didn't come through. Try another one.");
+  const bytes = Buffer.from(m[1], "base64");
+  const isJpeg = bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (!isJpeg || bytes.length > MAX_PHOTO_BYTES) throw new UserError("That picture didn't come through. Try another one.");
+  const key = randomBytes(18).toString("base64url");
+  check(await db().from("photos").upsert({ user_id: userId, data: bytes.toString("base64"), updated_at: new Date().toISOString() }));
+  check(await db().from("profiles").update({ photo_key: key }).eq("user_id", userId).eq("is_demo", false));
+  return `/api/photos/${key}`;
+}
+
+export async function deletePhoto(userId: string): Promise<void> {
+  check(await db().from("profiles").update({ photo_key: null }).eq("user_id", userId).eq("is_demo", false));
+  check(await db().from("photos").delete().eq("user_id", userId));
+}
+
+/** The JPEG behind a photo key, for the image route. */
+export async function getPhoto(key: string): Promise<Buffer | null> {
+  if (!/^[A-Za-z0-9_-]{20,40}$/.test(key)) return null;
+  const owner = check(await db().from("profiles").select("user_id").eq("photo_key", key).maybeSingle()) as { user_id: string } | null;
+  if (!owner) return null;
+  const row = check(await db().from("photos").select("data").eq("user_id", owner.user_id).maybeSingle()) as { data: string } | null;
+  return row ? Buffer.from(row.data, "base64") : null;
 }
 
 export async function listDemoPeople(): Promise<PublicPerson[]> {
-  const rows = check(await db().from("profiles").select("user_id, name, year, bio, is_demo").eq("is_demo", true).order("name"));
+  const rows = check(await db().from("profiles").select("user_id, name, year, bio, is_demo, photo_key").eq("is_demo", true).order("name"));
   return (rows ?? []).map(publicPerson);
 }
 
@@ -163,6 +202,7 @@ export type DateView = {
   totalSteps: number;
   nextUp: "me" | "them" | "director" | "judge" | null;
   meName: string;
+  mePhoto: string | null;
   them: PublicPerson | null;
   inviteeLabel: string | null;
   inviteToken: string | null;
@@ -206,6 +246,7 @@ async function toView(d: DateRow, userId: string): Promise<DateView> {
     totalSteps: TOTAL_STEPS,
     nextUp,
     meName: mine?.name ?? "You",
+    mePhoto: mine ? photoUrl(mine) : null,
     them: theirs ? publicPerson(theirs) : null,
     inviteeLabel: side === "a" ? d.invitee_label || null : null,
     inviteToken: side === "a" && d.status === "invited" ? d.invite_token : null,
@@ -224,7 +265,7 @@ export async function getDateView(id: string, userId: string): Promise<DateView 
   return toView(d, userId);
 }
 
-export type DateSummary = { id: string; status: DateRow["status"]; with: string; isDemo: boolean; createdAt: string };
+export type DateSummary = { id: string; status: DateRow["status"]; with: string; isDemo: boolean; photo: string | null; createdAt: string };
 
 export async function listMyDates(userId: string): Promise<DateSummary[]> {
   const rows = check(
@@ -237,7 +278,7 @@ export async function listMyDates(userId: string): Promise<DateSummary[]> {
   ) as Pick<DateRow, "id" | "user_a" | "user_b" | "status" | "invitee_label" | "created_at">[];
   const ids = [...new Set(rows.flatMap((r) => [r.user_a, r.user_b]).filter((x): x is string => !!x && x !== userId))];
   const people = ids.length
-    ? (check(await db().from("profiles").select("user_id, name, is_demo").in("user_id", ids)) as { user_id: string; name: string; is_demo: boolean }[])
+    ? (check(await db().from("profiles").select("user_id, name, is_demo, photo_key").in("user_id", ids)) as { user_id: string; name: string; is_demo: boolean; photo_key: string | null }[])
     : [];
   const byId = new Map(people.map((p) => [p.user_id, p]));
   return rows.map((r) => {
@@ -247,6 +288,7 @@ export async function listMyDates(userId: string): Promise<DateSummary[]> {
       status: r.status,
       with: other?.name ?? (r.invitee_label || "Someone you invited"),
       isDemo: other?.is_demo ?? false,
+      photo: other ? photoUrl(other) : null,
       createdAt: r.created_at,
     };
   });

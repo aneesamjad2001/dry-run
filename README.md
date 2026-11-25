@@ -18,6 +18,9 @@ Design, Build, Ship (MPCS 51238), Autumn 2026 · Anees Amjad · Focus: **AI**
 5. Read "Before you meet…": where you click, what's worth talking about, what's still to find out, questions to ask. No score.
 6. "Want to meet?" If you both say yes, you see each other's contact.
 
+Photos are optional. If you add one, only the people you invite or do a dry run with can
+see it. The demo people have illustrated portraits.
+
 ## How the AI works (`lib/engine.ts`)
 
 A dry run is a fixed schedule of 14 steps. Each step is one model call, so the browser asks

@@ -29,7 +29,7 @@ export default async function InvitePage({ params }: PageProps<"/i/[token]">) {
   return (
     <div className="mx-auto max-w-lg py-8">
       <div className="flex items-center gap-4">
-        <Avatar name={from.name} size={56} />
+        <Avatar name={from.name} photo={from.photo} size={72} />
         <div>
           <p className="text-lg font-semibold">{from.name}</p>
           {from.year && <p className="text-sm text-muted">{from.year}</p>}
