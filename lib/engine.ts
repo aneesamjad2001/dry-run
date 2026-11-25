@@ -192,7 +192,7 @@ How to play it:
 - Talk like a real person texting on a first date: 1-3 short sentences, under 40 words, in ${self.name}'s voice. No stage directions, no narration, no name labels.
 - Hold ${self.name}'s real positions. When ${other} says something that conflicts with ${self.name}'s values, money habits or dealbreakers, say so plainly and kindly, the way ${self.name} actually would. Do not agree just to be pleasant, and only change your mind if you are genuinely persuaded.
 - A first date is where dealbreakers come out. When the conversation touches one of ${self.name}'s dealbreakers, say plainly that it's a dealbreaker for ${self.name} and why, in their own words, the way you'd tell someone before agreeing to a second date. Don't hide it or change the subject to keep things smooth.
-- Check your dealbreakers first. You can't know whether ${other} is on the wrong side of one until you ask, so ask about them in your FIRST TWO messages, as a natural question ("do you smoke at all?", "are you a dog person?"). Don't leave it for the end of the date. Then react honestly to the answer.
+- Check ${self.name}'s own dealbreakers first, and only those: the ones in the Dealbreakers list above. You can't know whether ${other} is on the wrong side of one until you ask, so ask about it in your FIRST TWO messages, as a natural question in ${self.name}'s voice. Don't leave it for the end of the date. Then react honestly to the answer. Never ask about, or claim, a dealbreaker that isn't in ${self.name}'s list: if smoking, pets or kids aren't there, they are not ${self.name}'s dealbreakers.
 - Only call something a dealbreaker if it is in ${self.name}'s Dealbreakers list. A plain difference in taste or habits is just a difference: say so without ending things over it.
 - The profile is everything you know about ${self.name}. Before you say anything about ${self.name}'s own life (what they eat or drink, pets, habits, family, job, places they've been, what they own or like), check that the profile says it. If it doesn't, you don't know it, and you must not say it, not even as small talk or to be agreeable.
 - So when ${other} asks something the profile doesn't answer ("do you drink coffee?" when the profile never mentions coffee), don't pick an answer. Say lightly, in ${self.name}'s voice, that it's one for when you meet ("ha, ask me that one in person"), then move to something the profile does cover.
@@ -294,22 +294,26 @@ function withTurnNote(messages: ModelMessage[], self: Person): ModelMessage[] {
 async function cloneTurn(events: DateEvent[], a: Person, b: Person, speaker: "a" | "b", scene: 1 | 2): Promise<DateEvent> {
   const self = speaker === "a" ? a : b;
   const other = speaker === "a" ? b : a;
-  const res = await withModels(CLONE_MODELS, (model) =>
-    generateText({
-      ...REQUEST,
-      model,
-      // Short in-character replies don't need deep thinking; low keeps turns fast.
-      reasoning: "low",
-      maxOutputTokens: 2000,
-      instructions: cloneSystem(self, other.name),
-      messages: withTurnNote(cloneMessages(events, speaker), self),
-    }),
-  );
-  if (res.finishReason === "content-filter") throw new EngineError(`${self.name}'s clone declined to answer.`);
   const heard = events.findLast((e) => e.speaker !== speaker && e.speaker !== "director")?.text;
-  const text = dropEcho(cleanCloneLine(res.text, self.name, other.name), heard);
-  if (!text) throw new EngineError(`${self.name}'s clone said nothing.`);
-  return { speaker, text, scene };
+  // Small models now and then return an empty line (or only an echo). One more try
+  // is cheaper than a failed date.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await withModels(CLONE_MODELS, (model) =>
+      generateText({
+        ...REQUEST,
+        model,
+        // Short in-character replies don't need deep thinking; low keeps turns fast.
+        reasoning: "low",
+        maxOutputTokens: 2000,
+        instructions: cloneSystem(self, other.name),
+        messages: withTurnNote(cloneMessages(events, speaker), self),
+      }),
+    );
+    if (res.finishReason === "content-filter") throw new EngineError(`${self.name}'s clone declined to answer.`);
+    const text = dropEcho(cleanCloneLine(res.text, self.name, other.name), heard);
+    if (text) return { speaker, text, scene };
+  }
+  throw new EngineError(`${self.name}'s clone said nothing.`);
 }
 
 /** Smaller models sometimes repeat the line they just heard before answering it. Keep the answer. */
